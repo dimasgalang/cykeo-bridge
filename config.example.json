@@ -1,0 +1,47 @@
+{
+  "_keterangan": [
+    "Contoh konfigurasi bridge agent RFID. SALIN ke config.json lalu SESUAIKAN.",
+    "Jangan pernah menaruh API key produksi nyata di file yang di-commit git.",
+    "Alternatif aman: set env RFID_BRIDGE_API_KEY (menimpa nilai di file)."
+  ],
+
+  "server_url": "http://192.168.1.10:8080",
+  "reader_code": "CYKEO-01",
+  "api_key": "ISI-DARI-SERVER",
+
+  "mode": "simulator",
+  "_mode": "zebra | cykeo | simulator",
+
+  "_com": "Port COM unit CK-D5 (WAJIB autodetect di PC Test; contoh prod COM3)",
+  "com_port": "COM1",
+  "_baud": "Baud production terkonfirmasi 115200 dari OpenSerial(\"<COM>:115200\", 60)",
+  "baudrate": 115200,
+  "_init_param": "Parameter handshake protokol. BUKAN license key. Opsional; biarkan default/ kosong.",
+  "init_param": "E5DC18EDBEEE6EAD954D7332E6D90361",
+
+  "_helper_path": "Path cykeo-helper.exe. Kosong = cari otomatis (LOCALAPPDATA / folder bridge / PATH).",
+  "helper_path": "",
+  "_sdk_dir": "Folder SDK vendor berisi GReaderApi.dll. Kosong = ikut folder helper.",
+  "sdk_dir": "",
+
+  "batch_size": 50,
+  "flush_interval": 1.0,
+  "poll_interval": 0.25,
+  "_connect_timeout": "Production pakai 60 detik (argumen ke-2 OpenSerial). Jangan kurang dari itu.",
+  "connect_timeout": 60.0,
+  "request_timeout": 10.0,
+  "max_retries": 3,
+  "backoff_base": 1.0,
+  "backoff_max": 60.0,
+  "dedup_window": 0.0,
+
+  "log_path": "C:\\ProgramData\\CykeoBridge\\logs\\bridge.log",
+  "queue_path": "C:\\ProgramData\\CykeoBridge\\queue.jsonl",
+
+  "simulator_fixture": "",
+  "simulator_loop": true,
+  "simulator_delay": 0.05,
+
+  "antenna": 1,
+  "enabled": true
+}

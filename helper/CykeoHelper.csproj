@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <!-- WAJIB win-x86: GReaderApi.dll production adalah PE32 (32-bit).
+         Build x64 akan gagal load dengan BadImageFormatException. -->
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+    <SelfContained>false</SelfContained>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>cykeo-helper</AssemblyName>
+    <RootNamespace>CykeoBridge.Helper</RootNamespace>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <NoWarn>CS8600;CS8602;CS8604;CS0168;CS0219;MSB3277;CS0436</NoWarn>
+
+    <!-- Metadata ini muncul di Properties_details.exe / Explorer sehingga
+         signature-based AV bisa mengidentifikasi binary sebagai milik
+         organisasi kita, bukan file unsigned yang mencurigakan. -->
+    <Version>1.0.0</Version>
+    <Product>Cykeo RFID Bridge Helper</Product>
+    <Company>PT Chutex.App</Company>
+    <Authors>Chutex IT Department</Authors>
+    <Description>Read-only RFID bridge helper for Cykeo CK-D5 reader (UHF 860-960 MHz).</Description>
+    <Copyright>Copyright (c) 2026 PT Chutex.App</Copyright>
+    <!-- Deterministik: hash binary stabil antar build agar allowlist
+         berbasis SHA-256 tidak kedaluwarsa tiap rebuild. -->
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.IO.Ports" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="GReaderApi">
+      <HintPath>$(SdkDir)GReaderApi.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(SdkDir)Newtonsoft.Json.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

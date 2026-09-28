@@ -1,0 +1,15 @@
+# Bridge agent RFID (Python 3.11)
+#
+# Runtime bridge TIDAK butuh paket pihak ketiga apa pun — semua pakai stdlib
+# (urllib, json, logging.handlers, ctypes). Pip install -r requirements.txt
+# hanya relevan untuk tooling/test di mesin developer, bukan di PC scanner.
+#
+# --- wajib (runtime) ---
+# (kosong) — stdlib saja
+#
+# --- opsional ---
+# pyserial  : hanya perlu kalau ingin adapter reader lewat port serial GENERIK
+#              (mis. mode debug/ASCII). Adapter Cykeo bawaan memakai SDK
+#              GReader.dll via ctypes, BUKAN pyserial.
+#              pasang dengan:  pip install "pyserial>=3.5"
+pyserial>=3.5 ; extra == "serial"

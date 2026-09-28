@@ -1,0 +1,38 @@
+# --- build output ---
+helper/bin/
+helper/obj/
+dist/
+build/
+*.spec
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+.venv-test/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- credentials / secrets (JANGAN pernah commit) ---
+.env
+.env.*
+*.key
+*.pfx
+*.p12
+*.cer
+secrets*.json
+
+# --- test & temp artifacts ---
+/tmp/
+rdp_*.png
+rdp_*.jpg
+r*.jpg
+*.log
+parse.txt
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
