@@ -32,6 +32,14 @@ r*.jpg
 *.log
 parse.txt
 
+# --- skrip diagnosa infrastruktur sementara (tidak untuk produksi) ---
+tray/iptest.ps1
+tray/nettest.ps1
+tray/fetch_exe.ps1
+tray/serve_exe.ps1
+tray/test_tray.ps1
+tray/test_restart.ps1
+
 # --- OS ---
 .DS_Store
 Thumbs.db
