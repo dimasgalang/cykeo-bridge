@@ -7,7 +7,7 @@ sekali pun membaca tag. Test ini mengunci: runtime ikut dikemas, dan
 layoutnya diperiksa ketat.
 
 Test di sini murni stdlib supaya bisa jalan di host yang tidak punya
-dependensi apa pun - persis seperti kondisi yangcea kami cegah.
+dependensi apa pun - persis seperti kondisi yang kami cegah.
 """
 from __future__ import annotations
 
@@ -114,18 +114,29 @@ def test_prepare_gagal_tanpa_pth(tmp_path):
 
 
 def test_build_command_urutan_benar(tmp_path):
-    """Harus [python.exe, -u, -m, ...] - urutan -m itu wajib."""
+    """Harus [python.exe, -u, <launcher>, ...] - BUKAN -m.
+
+    -m bergantung sys.path, dan isolated mode membuat sys.path tidak
+    memuat folder install. Lihat test_isolated_mode_pth.py.
+    """
     cmd = runtime.build_command(tmp_path, ["cykeo_bridge", "run"])
     assert cmd[0].endswith("python.exe")
     assert "python-embed" in cmd[0]
     assert cmd[1] == "-u"
-    assert cmd[2] == "-m"
-    assert cmd[3:] == ["cykeo_bridge", "run"]
+    assert cmd[2].endswith("bridge_launcher.py")
+    assert cmd[3:] == ["run"]
+
+
+def test_build_command_tidak_pernah_memakai_flag_m(tmp_path):
+    """Penjaga: kalau suatu saat ada yang memunculkan -m lagi, test ini
+    harus gagal. Jalur -m itulah yang rusak di produksi."""
+    cmd = runtime.build_command(tmp_path, ["cykeo_bridge", "run"])
+    assert "-m" not in cmd
 
 
 def test_build_command_untuk_test_reader(tmp_path):
     cmd = runtime.build_command(tmp_path, ["cykeo_bridge", "test-reader", "--duration", "15"])
-    assert cmd[3:] == ["cykeo_bridge", "test-reader", "--duration", "15"]
+    assert cmd[3:] == ["test-reader", "--duration", "15"]
 
 
 # --------------------------------------------------------------------- self_check
@@ -185,5 +196,5 @@ def test_bridge_pure_stdlib_sehingga_runtime_embed_cukup():
 
     assert third_party == [], (
         "Bridge harus PURE STDLIB supaya runtime embeddable cukup. "
-        "Kalau muncul dependensi baru, paket harus bringing pip installer: %s" % third_party
+        "Kalau muncul dependensi baru, paket harus membawa installer pip: %s" % third_party
     )

@@ -21,14 +21,19 @@ from pathlib import Path
 RUNTIME_DIRNAME = "python-embed"
 STDLIB_ZIP = "python312.zip"
 PTH_NAME = "python312._pth"
-PTH_FIXED = """python312.zip
-.
 
-# Ditambahkan oleh installer Cykeo: aktifkan site agar zipimport + stdlib
-# penuh tersedia. Build embeddable resmi meng-comment baris ini, dan
-# akibatnya modul yang butuh site.py tidak bisa di-import sama sekali.
-import site
-"""
+# Entri di _pth yang menunjuk ke folder install (parent dari python-embed\).
+#
+# INI WAJIB dan bukan opsional. Saat file _pth ada, Python jalan dalam
+# "isolated mode": sys.path dibangun HANYA dari isi _pth - cwd, PYTHONPATH,
+# dan PYTHONHOME semuanya DIABAIKAN. Itu terdeteksi dari log produksi
+# 29 Sep 2026: runtime dipakai dengan benar, lalu langsung
+# "No module named cykeo_bridge" padahal foldernya ada di install dir.
+#
+# Karena cwd diabaikan, satu-satunya cara agar 'python -m cykeo_bridge' menemukan
+# package-nya adalah menyebut folder install secara relatif di _pth. Karena
+# _pth tinggal di dalam python-embed\, '..' = folder install.
+INSTALL_DIR_ENTRY = ".."
 
 
 def _stderr(msg: str) -> None:
@@ -62,11 +67,15 @@ def looks_like_runtime(path) -> bool:
 
 
 def prepare(python_dir) -> bool:
-    """Aktifkan `import site` di _pth. Wajib, kalau tidak stdlib parsial.
+    """Siapkan _pth: aktifkan `import site` DAN tambahkan '..'.
 
-    Build embeddable resmi datang dengan `import site` di-comment, dan itu
-    bukan sekadar penghematan: tanpa site, modul yang resolve lewat
-    site-packages/zipimport akan hilang. Bridge kita butuh import penuh.
+    Dua-duanya wajib:
+
+    * `import site` - build embeddable resmi meng-comment baris ini, dan
+      tanpa itu modul yang resolve lewat site/zipimport tidak lengkap.
+    * `..` - isolated mode mengabaikan cwd, jadi package bridge di folder
+      install tidak akan ditemukan tanpa entri ini. (Lihat catatan di
+      INSTALL_DIR_ENTRY.)
 
     Return True kalau file _pth sudah benar setelah diproses.
     """
@@ -81,10 +90,9 @@ def prepare(python_dir) -> bool:
         _stderr("gagal baca %s: %s" % (pth, e))
         return False
 
-    lines = [ln for ln in text.splitlines()]
     # Buang komentar/petunjuk bawaan embeddable, sisakan yang jadi isi _pth.
     kept = []
-    for ln in lines:
+    for ln in text.splitlines():
         s = ln.strip()
         if s.startswith("#import site"):
             continue
@@ -92,12 +100,18 @@ def prepare(python_dir) -> bool:
             continue
         kept.append(ln)
 
-    body = "\n".join(ln for ln in kept if ln.strip()) + "\nimport site\n"
+    entries = [ln.strip() for ln in kept if ln.strip()]
+
+    # Idempoten: kalau '..' sudah ada jangan diduplikasi.
+    if INSTALL_DIR_ENTRY not in entries:
+        entries.append(INSTALL_DIR_ENTRY)
+
+    body = "\n".join(entries) + "\nimport site\n"
     if body == text:
         return True
 
-    # Tulis ke file sementara lalu replace: kalau/listrik mati di tengah,
-    # file _pth asli tidak boleh tern salvage jadi setengah jadi.
+    # Tulis ke file sementara lalu replace: kalau listrik mati di tengah,
+    # file _pth asli tidak boleh terselamatkan jadi setengah jadi.
     tmp = pth.with_suffix(".tmp")
     try:
         tmp.write_text(body, encoding="utf-8")
@@ -113,10 +127,23 @@ def prepare(python_dir) -> bool:
 
 
 def build_command(install_dir, module_args, runtime=None):
-    """Susun argv untuk menjalankan bridge: [python.exe, -u, -m, ...]."""
+    """Susun argv untuk menjalankan bridge lewat LAUNCHER, bukan -m.
+
+    Mengembalikan: [python.exe, -u, <install>/cykeo_bridge/bridge_launcher.py, ...]
+
+    Kenapa bukan "-m cykeo_bridge"? Karena isolated mode (lihat catatan di
+    INSTALL_DIR_ENTRY) membuat -m hampir selalu gagal. Memanggil file path
+    tidak bergantung sys.path sama sekali, jadi jauh lebih tahan -
+    bekerja bahkan kalau entri '..' di _pth terhapus.
+
+    module_args yang diberikan boleh diawali "cykeo_bridge" (gaya -m) atau
+    tidak; keduanya dibersihkan supaya tidak jadi argumen dobel.
+    """
     if runtime is None:
         runtime = runtime_dir(install_dir)
-    return [str(Path(runtime) / "python.exe"), "-u", "-m"] + list(module_args)
+    args = [a for a in list(module_args) if a != "cykeo_bridge"]
+    launcher = Path(install_dir) / "cykeo_bridge" / "bridge_launcher.py"
+    return [str(Path(runtime) / "python.exe"), "-u", str(launcher)] + args
 
 
 def self_check(runtime) -> bool:

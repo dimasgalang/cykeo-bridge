@@ -364,6 +364,27 @@ def _apply_overrides(cfg: Config, args: argparse.Namespace) -> None:
         cfg.mode = MODE_SIMULATOR
 
 
+def _wizard_hint() -> str:
+    """Petunjuk menjalankan wizard yang BENAR-BENAR bisa jalan.
+
+    Di interpreter embeddable, python312._pth mengaktifkan isolated mode:
+    sys.path hanya berisi isi _pth, sehingga cwd dan PYTHONPATH diabaikan.
+    Karena itu "python -m cykeo_bridge wizard" gagal dengan
+    "No module named cykeo_bridge" - persis yang terjadi di produksi
+    (29 Sep 2026: bridge start 100x lebih, module tidak pernah ketemu).
+
+    bridge_launcher.py dipanggil sebagai path file (bukan -m), jadi tidak
+    bergantung sys.path. Kalau file itu ada, sarankan itu; kalau tidak,
+    baru jatuh ke -m untuk instalasi python biasa.
+    """
+    launcher = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "bridge_launcher.py"
+    )
+    if os.path.isfile(launcher):
+        return 'Jalankan wizard: "%s" "%s" wizard' % (sys.executable, launcher)
+    return "Jalankan wizard: python -m cykeo_bridge wizard"
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(args.config)
@@ -377,7 +398,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print("[config] ERROR:", file=sys.stderr)
         for err in errors:
             print(f"  - {err}", file=sys.stderr)
-        print("Jalankan wizard: python -m cykeo_bridge wizard", file=sys.stderr)
+        print(_wizard_hint(), file=sys.stderr)
         return EXIT_CONFIG
 
     setup_logging(None if args.no_log_file else cfg.log_file,
