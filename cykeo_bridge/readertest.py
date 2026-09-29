@@ -11,7 +11,7 @@ Gejala yang dilaporkan: dashboard selalu "0 EPC" dan status reader nyangkut di
 
 Modul ini menjawab (A) secara lokal. Kalau tag terlihat di sini, layer
 hardware + helper + COM sudah terbukti benar, dan itu menyisakan jalur
-HTTP sebagai suspect utama. Kalau tidak ada tag, tidak ada gunanya调试
+HTTP sebagai suspect utama. Kalau tidak ada tag, tidak ada gunanya mengecek
 koneksi server dulu.
 
 Prinsip
