@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "fCQn0DxynF0=",
+  "success": true,
+  "projectFilePath": "/home/hermes/workspace/cykeo-bridge/tray/CykeoTrayAgent.csproj",
+  "expectedPackageFiles": [
+    "/home/hermes/.nuget/packages/microsoft.netframework.referenceassemblies/1.0.3/microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
+    "/home/hermes/.nuget/packages/microsoft.netframework.referenceassemblies.net48/1.0.3/microsoft.netframework.referenceassemblies.net48.1.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}

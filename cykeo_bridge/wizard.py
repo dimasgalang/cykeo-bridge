@@ -191,6 +191,12 @@ def collect_cli(config_path: Optional[Path] = None, *,
     return cfg
 
 
+def _buka_uji_pembaca(parent) -> None:  # pragma: no cover - GUI
+    """Buka dialog uji pembaca; jatuh ke CLI kalau tkinter tidak ada."""
+    from .ujipembaca_gui import _uji_pembaca_gui
+    _uji_pembaca_gui(parent)
+
+
 # ---------------------------------------------------------------------- #
 # GUI tkinter
 # ---------------------------------------------------------------------- #
@@ -277,6 +283,8 @@ def _run_gui(config_path: Optional[Path]) -> Optional[Config]:  # pragma: no cov
     buttons = ttk.Frame(frame)
     buttons.grid(row=9, column=0, columnspan=2, pady=(10, 0))
     ttk.Button(buttons, text="Simpan", command=on_save).pack(side="left", padx=6)
+    ttk.Button(buttons, text="Uji Pembaca",
+               command=lambda: _buka_uji_pembaca(root)).pack(side="left", padx=6)
     ttk.Button(buttons, text="Batal", command=root.destroy).pack(side="left", padx=6)
     root.bind("<Return>", lambda _e: on_save())
     root.mainloop()

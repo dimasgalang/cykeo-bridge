@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- winexe = tanpa console window saat dijalankan dari tray/startup task.
+         Kalau Exe (console), akan muncul jendela hitam yang mengganggu operator. -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+    <SelfContained>false</SelfContained>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>CykeoTrayAgent</AssemblyName>
+    <RootNamespace>CykeoBridge.Tray</RootNamespace>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <NoWarn>CS0436;CS0168;CS0219</NoWarn>
+
+    <Version>1.0.0</Version>
+    <Product>Cykeo RFID Bridge Tray Agent</Product>
+    <Company>PT Chutex.App</Company>
+    <Authors>Chutex IT Department</Authors>
+    <Description>System tray agent for the Cykeo CK-D5 RFID bridge.</Description>
+    <Copyright>Copyright (c) 2026 PT Chutex.App</Copyright>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- stub_bridge.cs = eksperimen QA lama dengan entry point sendiri.
+         Kalau ikut dikompilasi, CSC error "more than one entry point".
+         File ini tetap dipakai lewat csc.exe manual saat QA, bukan oleh build ini. -->
+    <Compile Remove="stub_bridge.cs" />
+    <Compile Remove="*.ps1" />
+    <None Remove="*.ps1" />
+    <None Remove="stub_bridge.cs" />
+  </ItemGroup>
+
+</Project>

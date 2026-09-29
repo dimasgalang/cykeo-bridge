@@ -1,0 +1,63 @@
+{
+  "format": 1,
+  "restore": {
+    "/home/hermes/workspace/cykeo-bridge/tray/CykeoTrayAgent.csproj": {}
+  },
+  "projects": {
+    "/home/hermes/workspace/cykeo-bridge/tray/CykeoTrayAgent.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/hermes/workspace/cykeo-bridge/tray/CykeoTrayAgent.csproj",
+        "projectName": "CykeoTrayAgent",
+        "projectPath": "/home/hermes/workspace/cykeo-bridge/tray/CykeoTrayAgent.csproj",
+        "packagesPath": "/home/hermes/.nuget/packages/",
+        "outputPath": "/home/hermes/workspace/cykeo-bridge/tray/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/hermes/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net48"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net48": {
+            "targetAlias": "net48",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net48": {
+          "targetAlias": "net48",
+          "dependencies": {
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/home/hermes/.dotnet/sdk/8.0.425/RuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "win-x86": {
+          "#import": []
+        }
+      }
+    }
+  }
+}

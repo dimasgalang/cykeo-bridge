@@ -1,0 +1,7 @@
+/home/hermes/workspace/cykeo-bridge/tray/obj/Release/net48/win-x86/CykeoTrayAgent.GeneratedMSBuildEditorConfig.editorconfig
+/home/hermes/workspace/cykeo-bridge/tray/obj/Release/net48/win-x86/CykeoTrayAgent.AssemblyInfoInputs.cache
+/home/hermes/workspace/cykeo-bridge/tray/obj/Release/net48/win-x86/CykeoTrayAgent.AssemblyInfo.cs
+/home/hermes/workspace/cykeo-bridge/tray/obj/Release/net48/win-x86/CykeoTrayAgent.csproj.CoreCompileInputs.cache
+/home/hermes/workspace/cykeo-bridge/tray/bin/Release/net48/win-x86/CykeoTrayAgent.exe.config
+/home/hermes/workspace/cykeo-bridge/tray/bin/Release/net48/win-x86/CykeoTrayAgent.exe
+/home/hermes/workspace/cykeo-bridge/tray/obj/Release/net48/win-x86/CykeoTrayAgent.exe

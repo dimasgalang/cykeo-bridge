@@ -195,6 +195,7 @@ class BridgeAgent:
         buffer: List[Dict[str, Any]] = []
         last_flush = time.monotonic()
         iterations = 0
+        waiting_logged = False
         try:
             while not self._stop:
                 iterations += 1
@@ -204,8 +205,22 @@ class BridgeAgent:
                 try:
                     tags = self.device.read_tags()
                 except DeviceError as exc:
+                    # Reader belum dicolok / COM port belum muncul itu kondisi
+                    # NORMAL di lapangan, bukan kegagalan fatal. Dulu agent langsung
+                    # exit 3 sehingga tray agent restart tanpa henti setiap 10 detik.
+                    # Sekarang: tunggu reader, log sekali, lalu coba lagi.
+                    if self.config.mode != MODE_SIMULATOR:
+                        if not waiting_logged:
+                            logger.warning(
+                                "agent: reader belum siap (%s). Menunggu port COM; "
+                                "colok kabel USB reader CK-D5. Bridge tetap hidup.",
+                                exc)
+                            waiting_logged = True
+                        time.sleep(2.0)
+                        continue
                     logger.error("agent: device error: %s", exc)
                     raise
+                waiting_logged = False
                 if tags:
                     buffer.extend(self.collect(tags))
                 if len(buffer) >= self.config.batch_size:
@@ -292,6 +307,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         help="Jangan daftarkan startup task saat selesai")
 
     sub.add_parser("config-path", help="Tampilkan lokasi config default")
+
+    # Uji pembaca lokal: baca EPC langsung dari reader, TIDAK kirim ke server.
+    # Dipakai teknisi untuk membuktikan hardware sebelum menyalahkan server.
+    uji = sub.add_parser(
+        "test-reader",
+        help="Uji baca RFID langsung dari reader (TIDAK kirim ke server)",
+    )
+    uji.add_argument("-c", "--config", default=None, help="path ke config.json")
+    uji.add_argument("--duration", type=float, default=None,
+                     help="durasi uji dalam detik (default 15)")
     return parser
 
 
@@ -434,6 +459,42 @@ def _register_windows_startup(config_path: Optional[str]) -> None:
                        result.returncode, (result.stderr or result.stdout).strip())
 
 
+def _cmd_test_reader(args: argparse.Namespace) -> int:
+    """``cykeo_bridge test-reader`` — uji baca lokal, tanpa kirim ke server.
+
+    Exit code sengaja dipisah supaya installer/skrip bisa membedakan
+    "reader terbukti salah" dari "reader tidak bisa dibuka sama sekali":
+      0 = tag terbaca
+      1 = tidak ada tag / reader tidak hidup
+      2 = konfigurasi bermasalah
+    """
+    from .readertest import jalankan_uji_dari_file
+
+    durasi = getattr(args, "duration", None)
+
+    def tampilkan(epc: str) -> None:
+        print(f"  + {epc}", flush=True)
+
+    kwargs = {"on_tag": tampilkan}
+    if durasi:
+        kwargs["durasi"] = float(durasi)
+
+    print("Memulai uji pembaca lokal (tidak ada data yang dikirim ke server)...")
+    print("Arahkan RFID tag ke antena reader. Menutup otomatis.\n")
+
+    hasil = jalankan_uji_dari_file(getattr(args, "config", None), **kwargs)
+
+    print()
+    for baris in hasil.as_lines():
+        print(baris)
+
+    if not hasil.ok:
+        if hasil.error and hasil.error.startswith("CONFIG_TIDAK_ADA"):
+            return 2
+        return 1
+    return EXIT_OK
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -454,6 +515,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if result == EXIT_OK and not getattr(args, "no_autostart", False):
             _register_windows_startup(config)
         return result
+    if command == "test-reader":
+        return _cmd_test_reader(args)
     parser.print_help()
     return EXIT_OK
 
