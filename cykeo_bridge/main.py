@@ -37,6 +37,8 @@ from .config import (
 )
 from .devices.base import DeviceAdapter, DeviceError, RawTag
 from .devices.factory import build_device
+from .portlock import EXIT_ALREADY_RUNNING as _LOCK_ALREADY_RUNNING
+from .portlock import LockHeld, ReaderPortLock
 from .epc import normalize
 from .http_client import HttpResult, RfidHttpClient
 from .logging_setup import register_secret, setup_logging
@@ -50,6 +52,9 @@ EXIT_OK = 0
 EXIT_FATAL = 2
 EXIT_DEVICE = 3
 EXIT_CONFIG = 4
+#: Port reader sudah dipegang instance lain (bukan crash — supervisor boleh
+#: memperlakukannya sebagai kondisi normal).
+EXIT_ALREADY_RUNNING = 5
 
 
 class FatalAuthError(RuntimeError):
@@ -418,6 +423,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Catat config tanpa membocorkan rahasia
     logger.info("config: %s", json.dumps(cfg.safe_dict(), indent=2, default=str))
 
+    # Single-owner per port reader. Tanpa ini tray + worker + test-reader bisa
+    # berebut COM yang sama saat boot: salah satu dapat "Access denied" dan
+    # EPC-nya hilang tanpa jejak.
+    lock = None
+    if (cfg.mode or "").lower() != MODE_SIMULATOR:
+        lock = ReaderPortLock(cfg.com_port, label="bridge")
+        try:
+            lock.acquire()
+            logger.info("port lock: memegang %s (owner bridge pid=%d)",
+                        cfg.com_port, os.getpid())
+        except LockHeld as exc:
+            logger.warning("port lock: %s", exc)
+            print(f"[port] {exc}", file=sys.stderr)
+            return EXIT_ALREADY_RUNNING
+
     agent = BridgeAgent(cfg)
     agent.install_signal_handlers()
     if args.print_payload:
@@ -434,6 +454,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         agent.request_stop()
         agent.shutdown()
         return EXIT_OK
+    finally:
+        if lock is not None:
+            lock.release()
 
 
 def _install_payload_logger(agent: BridgeAgent) -> None:
@@ -518,10 +541,34 @@ def _cmd_test_reader(args: argparse.Namespace) -> int:
       0 = tag terbaca
       1 = tidak ada tag / reader tidak hidup
       2 = konfigurasi bermasalah
+      5 = port sedang dipakai bridge yang sedang produksi
     """
+    from .config import load_config
     from .readertest import jalankan_uji_dari_file
 
     durasi = getattr(args, "duration", None)
+
+    # Uji baca lokal TIDAK boleh merebut port dari bridge yang sedang produksi.
+    # Kalau bridge aktif, operator harus stop bridge lebih dulu, lalu ulangi.
+    lock = None
+    try:
+        cfg = load_config(getattr(args, "config", None))
+    except Exception:  # noqa: BLE001 - config dicek ulang di bawah
+        cfg = None
+
+    if cfg is not None and (cfg.mode or "").lower() != MODE_SIMULATOR:
+        lock = ReaderPortLock(cfg.com_port, label="test-reader")
+        try:
+            lock.acquire()
+        except LockHeld as exc:
+            print(f"[port] {exc}", file=sys.stderr)
+            print(
+                "\nBridge sedang mengirim tag ke server memakai port ini. "
+                "Reader Test tidak boleh merebut port — stop bridge dulu, "
+                "lalu ulangi.",
+                file=sys.stderr,
+            )
+            return EXIT_ALREADY_RUNNING
 
     def tampilkan(epc: str) -> None:
         print(f"  + {epc}", flush=True)
@@ -533,7 +580,11 @@ def _cmd_test_reader(args: argparse.Namespace) -> int:
     print("Memulai uji pembaca lokal (tidak ada data yang dikirim ke server)...")
     print("Arahkan RFID tag ke antena reader. Menutup otomatis.\n")
 
-    hasil = jalankan_uji_dari_file(getattr(args, "config", None), **kwargs)
+    try:
+        hasil = jalankan_uji_dari_file(getattr(args, "config", None), **kwargs)
+    finally:
+        if lock is not None:
+            lock.release()
 
     print()
     for baris in hasil.as_lines():
