@@ -121,7 +121,7 @@ class Config:
     #: Timeout koneksi reader. Production memanggil
     #: ``OpenSerial(reader, 60)`` (detik) — jangan kurang dari 60, karena
     #: reader CK-D5 butuh lama handshake setelah power-on.
-    connect_timeout: float = 60.0
+    connect_timeout: float = 20.0
     request_timeout: float = 10.0
     max_retries: int = 3
     backoff_base: float = 1.0

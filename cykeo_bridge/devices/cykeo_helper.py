@@ -252,6 +252,20 @@ class CykeoHelperDevice(DeviceAdapter):
 
         logger.info("helper .NET aktif: %s", hello.get("sdkDir"))
 
+        # Helper .NET belum membuka port serial hanya dengan handshake hello;
+        # perintah ``connect`` yang benar-benar membuka COM. Tanpa langkah ini
+        # helper membalas "helper belum terhubung" pada InventoryEpc.
+        self._request(
+            {
+                "cmd": "connect",
+                "com_port": self.com_port,
+                "baud": int(self.baudrate),
+                "timeout": int(self.connect_timeout),
+            },
+            timeout=float(self.connect_timeout) + 15.0,
+        )
+        logger.info("helper terhubung ke reader %s:%s", self.com_port, self.baudrate)
+
     def stop(self) -> None:
         """Hentikan inventory lalu tutup helper."""
         self._stop.set()
