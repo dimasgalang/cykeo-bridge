@@ -110,6 +110,15 @@ class BridgeAgent:
         now = time.monotonic() if now is None else now
         window = float(self.config.dedup_window or 0.0)
         events: List[Dict[str, Any]] = []
+        if window <= 0:
+            # dedup_window=0 berarti "dedup hanya per batch" (lihat config).
+            # Kalau tidak di-reset di sini, EPC yang sudah pernah terkirim
+            # di-drop selamanya selama hidup proses: reader memindai tag yang
+            # sama berulang-ribu kali tetapi tidak pernah mengirim apa pun lagi.
+            # Gejalanya di lapangan: log agent berbunyi
+            #   stats={"read": 4004, "deduped": 3995, "sent": 9}
+            # sehingga scan kedua (mis. Reader Test dari UI) selalu 0 EPC.
+            self._seen_in_batch.clear()
         for tag in tags:
             self.stats["read"] += 1
             key = self._dedup_key(tag)

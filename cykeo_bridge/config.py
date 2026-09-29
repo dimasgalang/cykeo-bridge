@@ -129,7 +129,9 @@ class Config:
     simulator_fixture: str = ""
     simulator_loop: bool = True
     simulator_delay: float = 0.05
-    dedup_window: float = 0.0  # 0 = tanpa dedup window (dedup hanya per batch)
+    # 0 = tanpa dedup window; EPC di-dedup hanya di dalam satu batch baca,
+    # lalu tabel dedup dibersihkan (lihat Agent.collect).
+    dedup_window: float = 0.0
     enabled: bool = True
     extra: Dict[str, Any] = field(default_factory=dict)
 
