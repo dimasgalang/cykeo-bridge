@@ -285,11 +285,42 @@ class CykeoHelperDevice(DeviceAdapter):
             self._buffer.clear()
         return out
 
+    def begin_inventory(self) -> None:
+        """Kirim ``MsgBaseInventoryEpc`` tanpa menunggu (non-blocking).
+
+        Ini perintah yang benar-benar membuat reader memindai. ``read_tags()``
+        hanya menguras buffer, jadi tanpa perintah ini buffer tidak akan pernah
+        terisi dan hasil selalu 0 tag.
+        """
+        if self._proc is None:
+            self.start()
+        self._request(
+            {
+                "cmd": "start",
+                "inventory_mode": 1,
+                "tid_len": 6,
+                "tid_mode": 0,
+            },
+            timeout=15.0,
+        )
+        logger.info("helper: inventory dimulai (MsgBaseInventoryEpc)")
+
+    def end_inventory(self) -> None:
+        """Kirim ``MsgBaseStop`` (non-blocking, read-only)."""
+        try:
+            self._request({"cmd": "stop"}, timeout=10.0)
+            logger.info("helper: inventory dihentikan (MsgBaseStop)")
+        except DeviceError:
+            # Reader sudah tidak terhubung - tidak apa-apa, tag sudah berhenti
+            # bersama process-nya.
+            logger.debug("helper: stop inventory dilewati (helper sudah tutup)")
+
     def start_inventory(self, duration: float = 1.0) -> None:
         """Mulai inventory read-only selama ``duration`` detik.
 
-        Dipanggil worker bridge setelah ``start()``. Inventory dihentikan
-        otomatis dengan ``MsgBaseStop`` (meniru production ``StopReading``).
+        Versi BLOCKING (start -> sleep -> stop), untuk pemanggilan sekali
+        selesai. Agent utama dan Uji Pembaca memakai ``begin_inventory()`` /
+        ``end_inventory()`` supaya tidak membekukan loop.
         """
         if self._proc is None:
             self.start()

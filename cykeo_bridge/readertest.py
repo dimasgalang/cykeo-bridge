@@ -168,10 +168,22 @@ def jalankan_uji(config: Config, *, durasi: float = DURASI_AUTOMATIS,
         )
 
     error_akhir: Optional[str] = None
+    inventory_dimulai = False
     try:
-        # DeviceAdapter tidak punya open() terpisah — read_tags() adalah
-        # satu-satunya operasi, dan konstruktor adapter yang sudah membuka
-        # koneksi ke reader (COM/helper).
+        # DeviceAdapter tidak punya open() terpisah — konstruktor adapter
+        # sudah membuka koneksi ke reader (COM/helper). TAPI itu belum cukup:
+        # read_tags() hanya menguras buffer, reader CK-D5 diam sampai diberi
+        # perintah inventory. Tanpa begin_inventory() hasilnya SELALU 0 tag
+        # berapa pun tag yang didekatkan ke reader. v1.6.4 ke bawah tidak
+        # pernah memanggilnya — itu akar bug "reader terbuka tapi 0 tag".
+        try:
+            device.begin_inventory()
+            inventory_dimulai = True
+            logger.info("uji-pembaca: inventory dimulai")
+        except Exception as exc:  # noqa: BLE001
+            # Adapter lama/tidak mendukung: tetap coba baca, jangan gagalkan.
+            logger.warning("uji-pembaca: begin_inventory gagal (%s), lanjut baca", exc)
+
         while time.monotonic() - waktu_mulai < durasi:
             for tag in device.read_tags():
                 total_dibaca += 1
@@ -187,6 +199,13 @@ def jalankan_uji(config: Config, *, durasi: float = DURASI_AUTOMATIS,
         error_akhir = pesan
         logger.warning("uji-pembaca: pembacaan terhenti - %s", pesan)
     finally:
+        # Hentikan inventory dulu, baru tutup — supaya reader tidak tertinggal
+        # dalam keadaan memindai.
+        if inventory_dimulai:
+            try:
+                device.end_inventory()
+            except Exception:  # noqa: BLE001, S110
+                pass
         # Tutup selalu, walau error: port COM yang tertahan akan membuat
         # agent utama gagal connect setelahnya.
         try:

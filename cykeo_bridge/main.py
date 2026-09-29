@@ -196,12 +196,28 @@ class BridgeAgent:
         last_flush = time.monotonic()
         iterations = 0
         waiting_logged = False
+        # Reader CK-D5 hanya memindai setelah diberi perintah inventory
+        # (MsgBaseInventoryEpc). read_tags() sendiri hanya menguras buffer,
+        # jadi tanpa baris ini agent akan berjalan seharian dan tetap 0 tag.
+        # Dicoba di dalam loop supaya reader yang belum dicolok saat start
+        # tetap dipancing begitu siap.
+        inventory_dimulai = False
         try:
             while not self._stop:
                 iterations += 1
                 if max_iterations is not None and iterations > max_iterations:
                     logger.info("agent: mencapai batas iterasi smoke test (%d)", max_iterations)
                     break
+                if not inventory_dimulai:
+                    try:
+                        self.device.begin_inventory()
+                        inventory_dimulai = True
+                        logger.info("agent: inventory dimulai, reader memindai")
+                    except DeviceError as exc:
+                        logger.info("agent: inventory belum bisa dimulai (%s), coba lagi", exc)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("agent: begin_inventory dilewati (%s)", exc)
+                        inventory_dimulai = True
                 try:
                     tags = self.device.read_tags()
                 except DeviceError as exc:
@@ -247,6 +263,11 @@ class BridgeAgent:
         logger.info("agent: shutting down, stats=%s", json.dumps(self.stats))
         try:
             if self.device is not None:
+                # Hentikan inventory dulu supaya reader tidak tertinggal memindai.
+                try:
+                    self.device.end_inventory()
+                except Exception:  # noqa: BLE001, S110
+                    pass
                 extra = self.device.flush_buffer()
                 if extra:
                     buffer_events = self.collect(extra)

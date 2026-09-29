@@ -73,6 +73,23 @@ class DeviceAdapter(abc.ABC):
     def read_tags(self) -> List[RawTag]:
         """Baca tag yang tersedia saat ini (bisa kosong)."""
 
+    def begin_inventory(self) -> None:
+        """Mulai pemindaian kontinu (non-blocking, read-only).
+
+        WAJIB dipanggil setelah ``read_tags()`` jadi reader benar-benar
+        memindai. ``read_tags()`` hanya menguras buffer; tanpa perintah
+        inventory reader CK-D5 diam dan buffer tidak akan pernah terisi
+        (gejala: "reader terbuka tapi 0 tag" selamanya).
+
+        Default: no-op, untuk adapter yang sudah memindai sendiri
+        (mis. simulator) atau yang tidak butuh perintah start.
+        """
+        return None
+
+    def end_inventory(self) -> None:
+        """Hentikan pemindaian (non-blocking). Default: no-op."""
+        return None
+
     def close(self) -> None:
         """Tutup resource (COM handle, DLL, file). Default: no-op."""
 
