@@ -94,9 +94,9 @@ def prepare(python_dir) -> bool:
     kept = []
     for ln in text.splitlines():
         s = ln.strip()
-        if s.startswith("#import site"):
-            continue
         if s.lower().startswith("import site"):
+            continue
+        if s.startswith("#"):
             continue
         kept.append(ln)
 
