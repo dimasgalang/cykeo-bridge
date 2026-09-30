@@ -109,7 +109,19 @@ class TestShortcutDesktop(unittest.TestCase):
         blok = self._blok_shortcut()
         self.assertIn("IShellLinkW", blok)
         self.assertIn("IPersistFile", blok)
-        self.assertNotIn("WScript.Shell", blok)
+        # Kuncinya PENGGUNAAN WScript.Shell, bukan kata itu di mana pun. Blok ini
+        # sah-sah menyebutnya di pesan peringatan fallback yang tidak pernah
+        # damaging instalasi. Yang dilarang adalah memanggil COM-nya, karena
+        # tidak bisa menulis WorkingDirectory dan diblokir di beberapa Windows
+        # edition (v1.6.x sempat gagal di PC korporat karena ini).
+        #
+        # Yang dicari: New-Object -ComObject WScript.Shell / $ws.CreateShortcut.
+        pemanggilan = re.findall(
+            r"-ComObject\s+WScript\.Shell|CreateShortcut\s*\(", blok
+        )
+        self.assertEqual(
+            [], pemanggilan, "shortcut tidak boleh memanggil COM WScript.Shell"
+        )
 
     def _blok_shortcut(self) -> str:
         """Blok kode shortcut: Add-Type C# + fungsi wrapper.
@@ -118,10 +130,21 @@ class TestShortcutDesktop(unittest.TestCase):
         PowerShell hanya pembungkus tipis. Menguji satu-duanya akan salah,
         jadi keduanya diambil.
         """
+        # v1.6.12: kelas factory WAJIB bernama CykeoShellLinkFactory, bukan
+        # CykeoShellLink. Kalau sama, Add-Type gagal dengan CS0101 dan
+        # $ErrorActionPreference='Stop' menghentikan SELURUH installer (v1.6.11
+        # keluar exit 1 tanpa memasang apa pun). Jadi guard di bawah mengunci
+        # nama factory, bukan nama COM.
         m = re.search(
-            r"if\s*\(\s*-not\s*\(\s*'CykeoShellLink'\s+-as", self.ps1
+            r"if\s*\(\s*-not\s*\(\s*'Cykeo\.CykeoShellLinkFactory'\s+-as", self.ps1
         )
         self.assertIsNotNone(m, "blok Add-Type shortcut tidak ditemukan")
+        # Penjaga tambahan: nama factory yang sama dengan kelas COM = CS0101.
+        self.assertNotIn(
+            r"public\s+static\s+class\s+CykeoShellLink\b",
+            self.ps1,
+            "factory tidak boleh memakai nama CykeoShellLink (bentrok dengan COM class)",
+        )
         akhir = self.ps1.index("function New-DesktopShortcut", m.start())
         return self.ps1[m.start() : akhir]
 
