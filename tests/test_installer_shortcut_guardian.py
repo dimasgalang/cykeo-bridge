@@ -1,4 +1,4 @@
-"""Regression test untuk fitur v1.6.11: shortcut Desktop + guardian tray.
+r"""Regression test untuk fitur v1.6.11: shortcut Desktop + guardian tray.
 
 Konteks. Dua keluhan nyata dari teknisi di PC test:
 
@@ -7,8 +7,8 @@ Konteks. Dua keluhan nyata dari teknisi di PC test:
    install. Shortcut Desktop dan Start Menu harus jadi jalan pulih yang
    bisa diklik user.
 
-2. Tray harus pulih sendiri, TAPI tidak boleh vécuak kalau user sendiri
-   yang sengajaaskeluar dari menu. Dua kasus ini harus BERBEDA:
+2. Tray harus pulih sendiri, TAPI tidak boleh menganggur kalau user sendiri
+   yang sengaja keluar dari menu. Dua kasus ini harus BERBEDA:
 
        tray mati + tanpa penanda  -> guardian hidupkan lagi (crash/taskkill)
        tray mati + ada penanda    -> guardian jangan hidupkan (user mau stop)
@@ -151,7 +151,7 @@ class TestShortcutDesktop(unittest.TestCase):
         tidak pernah ada karena COM gagal diam-diam.
         """
         m = re.search(r"\$shortcutOk\s*=\s*\$true", self.ps1)
-        self.assertIsNotNone(m, "tidak ada \$shortcutOk = \$true sama sekali")
+        self.assertIsNotNone(m, r"tidak ada \$shortcutOk = \$true sama sekali")
         sebelum = self.ps1[: m.start()]
         # verifikasi harus benar-benar dijalankan sebelum flag di-set
         self.assertIn("Test-Path -LiteralPath $shortcutPath", sebelum)
@@ -269,7 +269,7 @@ class TestTrayRecovery(unittest.TestCase):
             body,
             r"Quit\(false\)",
             "RelaunchTray harus keluar dengan Quit(false) supaya guardian "
-            "tidak mengira user sengajaaskeluar",
+            "tidak mengira user sengaja keluar",
         )
         # Dan harus membuang penanda basi sebelum start tray baru
         self.assertIn(
@@ -282,7 +282,7 @@ class TestTrayRecovery(unittest.TestCase):
         """Guardian harus mengecek penanda sebelum menghidupkan tray."""
         body = _method_body(self.cs, r"private\s+static\s+void\s+RunGuardian\(\)")
         self.assertIn("IsIntentionalExit()", body)
-        # penanda harus diperiksa SEBELUM启动 proses tray baru
+        # penanda harus diperiksa SEBELUM memulai proses tray baru
         m = re.search(r"Process\.Start|new\s+ProcessStartInfo", body)
         self.assertIsNotNone(m, "guardian tidak memulai proses tray sama sekali")
         self.assertLess(
