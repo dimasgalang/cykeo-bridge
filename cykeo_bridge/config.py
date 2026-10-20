@@ -77,27 +77,20 @@ class ConfigError(ValueError):
 
 
 def _default_dir() -> Path:
-    """Direktori data agent: %APPDATA% di Windows, ~/.local/share di Linux.
+    """Direktori data agent: %ProgramData% di Windows, ~/.local/share di Linux.
 
-    PERBAIKAN v1.6.19 (5 Okt 2026). Sebelumnya di sini dipakai
-    ``%ProgramData%``, sedangkan installer (``install_cykeo.ps1`` +
-    ``CykeoSetupGui.cs``) dan tray (``TrayAgent.cs``) menulis/membaca
-    ``%APPDATA%\\CykeoBridge``. Akibatnya bridge - satu-satunya komponen yang
-    benar-benar membaca config saat ``run`` - mencari di folder yang tidak
-    pernah diisi wizard, sehingga ``api_key`` selalu kosong. Di PC test v1.6.17
-    sempat jalan hanya karena config-nya dibuat manual, bukan lewat installer.
+    v1.6.20 BALIK ke %ProgramData%.
 
-    Dua lokasi tidak bisa dipertahankan: ``%ProgramData%`` butuh hak admin
-    sementara wizard berjalan sebagai user biasa, jadi datanya harus di
-    %APPDATA% yang selalu bisa ditulis tanpa elevasi.
-
-    %APPDATA% juga lebih baik untuk produk ini: folder config ikut roaming
-    per-user, jadi uninstall tidak meninggalkan sisa di mesin bersama dan
-    multi-user tidak saling menimpa config.
+    v1.6.19 sempat pindah ke %APPDATA% karena wizard jalan tanpa elevasi.
+    Tapi permintaan v1.6.20: \"config dicopy ke folder %ProgramData% saja\" -
+    dan v1.6.18 sudah work di %ProgramData% dengan config di sana (bukti:
+    RAR berisi C:\\ProgramData\\CykeoBridge\\config.json dengan api_key terisi).
+    v1.6.20 FULL %ProgramData% - installer, bridge, dan tray satu lokasi, tanpa
+    dua folder. Wizard di v1.6.20 tetap jalan elevated lewat installer, jadi
+    izin tulis tidak jadi masalah lagi.
     """
     if os.name == "nt":
-        base = os.environ.get("APPDATA") or str(
-            Path.home() / "AppData" / "Roaming")
+        base = os.environ.get("ProgramData") or r"C:\ProgramData"
         return Path(base) / "CykeoBridge"
     xdg = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg) if xdg else Path.home() / ".local" / "share"
