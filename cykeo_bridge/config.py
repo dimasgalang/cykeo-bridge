@@ -308,7 +308,12 @@ def load_config(path: Optional[os.PathLike | str] = None) -> Config:
     data: Dict[str, Any] = {}
     if target.exists():
         try:
-            raw = target.read_text(encoding="utf-8")
+            # "utf-8-sig" menerima file TANPA BOM juga, jadi lebih aman
+            # daripada "utf-8" + strip manual. Notepad Windows dan beberapa
+            # editor lain menambah BOM saat menyimpan UTF-8; json.loads()
+            # menolaknya ("Unexpected UTF-8 BOM"). Config yang disalin user
+            # lewat dialog wizard pun bisa saja menyimpan BOM.
+            raw = target.read_text(encoding="utf-8-sig")
         except OSError as exc:
             raise ConfigError(f"Gagal membaca {target}: {exc}") from exc
         raw = raw.strip()

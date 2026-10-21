@@ -45,10 +45,18 @@ CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
 
 
 def extract_member_definition(ps1: str) -> str:
-    """Ambil isi here-string MemberDefinition Add-Type, apa adanya."""
-    m = re.search(r"-MemberDefinition\s+@'\r?\n(.*?)\r?\n'@", ps1, re.S)
+    """Ambil isi here-string TypeDefinition Add-Type, apa adanya.
+
+    v1.6.21: installer pindah dari -MemberDefinition ke -TypeDefinition.
+    -MemberDefinition hanya menyisipkan blok kode ke type yang SUDAH ada,
+    sehingga deklarasi 'public class CykeoShellLink' di dalamnya tidak
+    pernah menjadi type - PowerShell balas "The generated type defines no
+    public methods or properties". -TypeDefinition justru mendefinisikan
+    type baru dari sumber C#, jadi kelasnya benar-benar ada.
+    """
+    m = re.search(r"-TypeDefinition\s+@'\r?\n(.*?)\r?\n'@", ps1, re.S)
     if not m:
-        raise AssertionError("blok MemberDefinition Add-Type tidak ditemukan")
+        raise AssertionError("blok TypeDefinition Add-Type tidak ditemukan")
     return m.group(1)
 
 

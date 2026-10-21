@@ -194,6 +194,50 @@ class TestPersistence(unittest.TestCase):
         with self.assertRaises(ConfigError):
             load_config(self.path)
 
+    def test_utf8_bom_is_tolerated(self) -> None:
+        # Notepad Windows menambah BOM saat menyimpan UTF-8. json.loads()
+        # menolaknya ("Unexpected UTF-8 BOM"), jadi bridge gagal start dan
+        # bridge sering Display "reader tidak menghasilkan tag" padahal
+        # masalahnya cuma karakter BOM di depan file.
+        payload = json.dumps(
+            {
+                "server_url": "http://127.0.0.1:9999",
+                "reader_code": "CYKEO-BOM",
+                "api_key": "bom-placeholder-key",
+                "com_port": "COM7",
+                "mode": "cykeo",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        self.path.write_bytes(b"\xef\xbb\xbf" + payload.encode("utf-8"))
+
+        cfg = load_config(self.path)
+
+        self.assertEqual(cfg.reader_code, "CYKEO-BOM")
+        self.assertEqual(cfg.api_key, "bom-placeholder-key")
+        self.assertEqual(cfg.com_port, "COM7")
+
+    def test_utf8_without_bom_still_loads(self) -> None:
+        # "utf-8-sig" harus tetap menerima file TANPA BOM.
+        payload = json.dumps(
+            {
+                "server_url": "http://127.0.0.1:9999",
+                "reader_code": "CYKEO-NOBOM",
+                "api_key": "nobom-placeholder-key",
+                "com_port": "COM8",
+                "mode": "cykeo",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        self.path.write_bytes(payload.encode("utf-8"))
+
+        cfg = load_config(self.path)
+
+        self.assertEqual(cfg.reader_code, "CYKEO-NOBOM")
+        self.assertEqual(cfg.api_key, "nobom-placeholder-key")
+
     def test_missing_file_returns_defaults(self) -> None:
         cfg = load_config(self.path)  # belum ada -> default + env
         self.assertIsInstance(cfg, Config)

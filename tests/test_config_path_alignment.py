@@ -1,4 +1,4 @@
-r"""Regression test untuk v1.6.19: config.json harus di SATU folder.
+"""Regression test untuk lokasi config: %ProgramData% (v1.6.20+).
 
 Konteks. Keluhan v1.6.18: "api_key kosong" masih muncul padahal field API key
 sudah ada di wizard installer, sementara PC test jalan di v1.6.17.
@@ -17,17 +17,20 @@ key dengan benar, wizard bilang "config ditulis", tray tetap menampilkan
 Semua komponen terlihat hijau; tidak ada yang salah kecuali satu hal: tidak
 ada yang pernah mengecek apakah mereka menulis ke FILE YANG SAMA.
 
-Perbaikan: default bridge diubah ke %APPDATA%, satu-satunya opsi yang bisa
-ditulis tanpa hak admin (wizard jalan sebagai user biasa).
+v1.6.19: bridge diubah ke %APPDATA% karena wizard jalan tanpa elevasi.
+v1.6.20: BALIK ke %ProgramData% - permintaan eksplisit "config dicopy ke
+folder %ProgramData% saja", dan wizard v1.6.20 tetap jalan elevated lewat
+installer sehingga hak tulis bukan masalah lagi. Semua komponen (installer,
+tray, bridge) sekarang menunjuk %ProgramData%\\CykeoBridge.
 
 Yang dikunci test ini:
 
-- Bridge harus resolve ke %APPDATA%\CykeoBridge, bukan %ProgramData%.
+- Bridge harus resolve ke %ProgramData%\\CykeoBridge.
 - Resolusi diuji lewat environment yang benar-benar disimulasikan, bukan
   lewat pembacaan teks source saja.
 - Sumber installer dan tray harus tetap menunjuk folder yang sama.
-- Kalau nanti ada yang mengembalikan bridge ke %ProgramData% atau memindahkan
-  tray ke %ProgramData%, test ini harus gagal.
+- Kalau nanti ada yang memindahkan bridge ke %APPDATA% atau tray ke
+  %APPDATA%, test ini harus gagal.
 """
 from __future__ import annotations
 
@@ -65,8 +68,8 @@ def run_snippet(body: str) -> str:
     return proc.stdout
 
 
-def test_default_dir_pakai_appdata_bukan_programdata():
-    """Bridge menunjuk %APPDATA%, dan tidak lagi %ProgramData%."""
+def test_default_dir_pakai_programdata_bukan_appdata():
+    """Bridge menunjuk %ProgramData%, dan tidak lagi %APPDATA%."""
     src = (BRIDGE / "config.py").read_text(encoding="utf-8")
     body = src.split("def _default_dir", 1)[1].split("\ndef ", 1)[0]
     # Buang docstring utuh (dapat multi-baris), lalu buang komentar.
@@ -76,18 +79,18 @@ def test_default_dir_pakai_appdata_bukan_programdata():
         line for line in code.splitlines()
         if not line.strip().startswith("#")
     )
-    assert "APPDATA" in code, (
-        "_default_dir tidak lagi memakai APPDATA - bridge akan mencari "
+    assert "ProgramData" in code, (
+        "_default_dir tidak lagi memakai ProgramData - bridge akan mencari "
         "config di folder yang tidak diisi installer atau tray"
     )
-    assert "ProgramData" not in code, (
-        "_default_dir masih memakai ProgramData. Lokasi itu butuh hak admin "
-        "dan tidak pernah diisi wizard installer."
+    assert "APPDATA" not in code, (
+        "_default_dir masih memakai APPDATA. Lokasi itu dipakai v1.6.19 "
+        "saja; sejak v1.6.20 semua komponen menunjuk %ProgramData%."
     )
 
 
 def test_resolusi_riil_di_lingkungan_windows():
-    """config.json harus benar-benar resolve ke AppData\\Roaming."""
+    """config.json harus benar-benar resolve ke ProgramData."""
     out = run_snippet(
         "from cykeo_bridge.config import _default_dir, default_config_path\n"
         "print('DIR=' + str(_default_dir()))\n"
@@ -97,10 +100,10 @@ def test_resolusi_riil_di_lingkungan_windows():
         line.split("=", 1) for line in out.strip().splitlines() if "=" in line
     )
     cfg = values.get("CFG", "")
-    assert "Roaming" in cfg, (
-        f"config.json resolve ke {cfg!r}, harusnya di AppData\\Roaming"
+    assert "ProgramData" in cfg, (
+        f"config.json resolve ke {cfg!r}, harusnya di ProgramData"
     )
-    assert "ProgramData" not in cfg, f"config.json masih di ProgramData: {cfg!r}"
+    assert "Roaming" not in cfg, f"config.json masih di AppData: {cfg!r}"
     assert cfg.rsplit("\\", 1)[-1].rsplit("/", 1)[-1] == "config.json", cfg
     assert EXPECTED_FOLDER in cfg, cfg
 
@@ -151,24 +154,25 @@ def test_salinan_paket_identik_dengan_sumber():
 
 
 def test_installer_dan_tray_tetap_ke_folder_yang_sama():
-    """Installer dan tray harus tetap berbasis %APPDATA%."""
+    """Installer dan tray harus tetap berbasis %ProgramData%."""
     if not INSTALLER_REPO.is_dir():
         return
 
     tray = INSTALLER_REPO / "tray" / "TrayAgent.cs"
     if tray.is_file():
         src = tray.read_text(encoding="utf-8", errors="replace")
-        assert "SpecialFolder.ApplicationData" in src, (
-            "TrayAgent.cs tidak memakai SpecialFolder.ApplicationData lagi"
+        assert "CommonApplicationData" in src, (
+            "TrayAgent.cs tidak memakai SpecialFolder.CommonApplicationData "
+            "lagi - tray dan bridge akan menyimpang"
         )
-        assert "ProgramData" not in src, (
-            "TrayAgent.cs memakai ProgramData - tray dan bridge akan "
-            "menyimpang lagi"
+        assert "SpecialFolder.ApplicationData" not in src, (
+            "TrayAgent.cs memakai SpecialFolder.ApplicationData (%APPDATA%) - "
+            "tray dan bridge akan menyimpang lagi"
         )
 
     ps1 = INSTALLER_REPO / "install_cykeo.ps1"
     if ps1.is_file():
         src = ps1.read_text(encoding="utf-8", errors="replace")
-        assert "Join-Path $env:APPDATA 'CykeoBridge'" in src, (
-            "install_cykeo.ps1 tidak menulis ke %APPDATA%\\CykeoBridge lagi"
+        assert "ProgramData" in src, (
+            "install_cykeo.ps1 tidak menulis ke %ProgramData%\\CykeoBridge lagi"
         )
