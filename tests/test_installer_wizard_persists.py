@@ -38,6 +38,74 @@ def _src() -> str:
     return PS1.read_text(encoding="utf-8", errors="replace")
 
 
+def _argumen_pertama_psi(body: str) -> list[str]:
+    """Argumen PERTAMA setiap new ProcessStartInfo(...) di body.
+
+    Pakai paren-MATCHING, bukan regex, supaya string literal berisi
+    escaped quote ("\\"" + selfExe + "\\" --wizard") tidak memutus
+    pembacaan. Regex buta seperti ProcessStartInfo\\(\\s*"[^"]*--wizard
+    BERHENTI di quote tengah sehingga bug v1.6.24 Lolos.
+
+    Argumen pertama adalah FileName. Kalau isinya memuat argumen
+    program ("--wizard"), itu bug: ShellExecute akan mencari file
+    bernama "<exe> --wizard ..." yang tidak ada.
+    """
+    hasil: list[str] = []
+    for m in re.finditer(r"new\s+ProcessStartInfo\s*\(", body):
+        i = body.find("(", m.end() - 1)
+        depth = 0
+        dalam_string = False
+        escape = False
+        for j in range(i, len(body)):
+            c = body[j]
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                dalam_string = not dalam_string
+                continue
+            if dalam_string:
+                continue
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+                if depth == 0:
+                    isi = body[i + 1:j]
+                    bagian: list[str] = []
+                    d = 0
+                    dstr = False
+                    esc = False
+                    awal = 0
+                    for k, ch in enumerate(isi):
+                        if esc:
+                            esc = False
+                            continue
+                        if ch == "\\":
+                            esc = True
+                            continue
+                        if ch == '"':
+                            dstr = not dstr
+                            continue
+                        if dstr:
+                            continue
+                        if ch in "([{":
+                            d += 1
+                        elif ch in ")]}":
+                            d -= 1
+                        elif ch == "," and d == 0:
+                            bagian.append(isi[awal:k])
+                            awal = k + 1
+                    bagian.append(isi[awal:])
+                    if bagian:
+                        hasil.append(bagian[0].strip())
+                    break
+    return hasil
+
+
 def test_install_cykeo_ps1_masuk_daftar_need():
     """Wizard harus ikut disalin ke InstallDir, bukan cuma helper + DLL."""
     src = _src()
@@ -303,19 +371,26 @@ def test_wizard_exec_argumen_tidak_disatukan_dengan_path_file_v1625():
     )
 
     # 1. Larangan constructor 2-argumen dengan command line gabungan.
-    #    Pola longgar: string yang MEMUAT '--wizard' DAN tanda kutip
-    #    di dalam argumen ProcessStartInfo berarti FileName ikut membawa
-    #    argumen.
-    for pola, pesan in (
-        (r'ProcessStartInfo\(\s*"[^"]*--wizard',
-         "ProcessStartInfo 2-argumen dipakai dengan '--wizard' di dalam "
-         "string - FileName akan berisi seluruh command line dan Windows "
-         "akan mencari file yang tidak ada (ERROR_FILE_NOT_FOUND)"),
-        (r'ProcessStartInfo\(\s*"[^"]*\\"\s*\+',
-         "FileName ProcessStartInfo dibangun dengan menyambung kutip dan "
-         "argumen - itu membuat path file berisi command line"),
-    ):
-        assert not re.search(pola, kode), pesan
+    #
+    #    PENTING: regex buta TIDAK cukup. Bentuk bug v1.6.24 adalah
+    #
+    #        new ProcessStartInfo(
+    #            "\"" + selfExe + "\" --wizard" + ...)
+    #
+    #    String literal-nya berisi escaped quote, jadi pola
+    #    ProcessStartInfo\(\s*"[^"]*--wizard  BERHENTI di quote tengah
+    #    dan TIDAK menangkap bug. Karena itu dipakai paren-MATCHING:
+    #    argumen pertama ProcessStartInfo dibaca utuh, baru dicek
+    #    apakah memuat "--wizard".
+    argumen_psi = _argumen_pertama_psi(kode)
+    assert argumen_psi, "ProcessStartInfo tidak dipakai di RunConfigureWizard()"
+
+    for argumen in argumen_psi:
+        assert "--wizard" not in argumen, (
+            "argumen pertama ProcessStartInfo harus path file saja - "
+            "'--wizard' di sana membuat FileName berisi command line dan "
+            "Windows mencari file '<exe> --wizard ...' (ERROR_FILE_NOT_FOUND)"
+        )
 
     # 2. Argumen harus terpisah dari path file. Dua bentuk yang benar:
     #    a) new ProcessStartInfo(pathVar, argsVar)   -> 2 argumen
@@ -324,14 +399,7 @@ def test_wizard_exec_argumen_tidak_disatukan_dengan_path_file_v1625():
     m_psi = re.search(r"new\s+ProcessStartInfo\s*\(([^;]*?)\)\s*\{", kode, re.S)
     assert m_psi, "ProcessStartInfo tidak dipakai di RunConfigureWizard()"
     argumen_psi = m_psi.group(1)
-    if "," in argumen_psi:
-        # Bentuk (a): argumen pertama harus path exe, TANPA '--wizard'.
-        arg_pertama = argumen_psi.split(",")[0]
-        assert "--wizard" not in arg_pertama, (
-            "argumen pertama ProcessStartInfo harus path file saja - "
-            "'--wizard' di sana membuat FileName berisi command line"
-        )
-    else:
+    if "," not in argumen_psi:
         # Bentuk (b): argumen wajib lewat property Arguments.
         assert re.search(r"\.Arguments\s*=", kode), (
             "argumen wizard harus lewat property Arguments, bukan digabung "
