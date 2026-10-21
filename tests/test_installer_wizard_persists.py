@@ -96,12 +96,65 @@ def test_loop_copy_skip_jika_source_sama_dengan_destination():
         )
 
 
-def test_tray_mencari_wizard_di_install_dir_dan_staging():
-    """Tray harus punya jalur fallback yang bisa ditemukan."""
+def test_tray_konfigurasi_memakai_wizard_python_elevated():
+    """v1.6.23: konfigurasi lewat wizard Python + elevasi UAC.
+
+    Menu lama "Jalankan wizard konfigurasi" memanggil install_cykeo.ps1
+    secara interaktif, dan itu selalu error di PC teknisi: install_cykeo.ps1
+    adalah installer (menyalin paket, memasang bridge, menulis ke %ProgramData%),
+    bukan wizard konfigurasi. Dipanggil dari tray tanpa elevasi hasilnya
+    error dan user tidak pernah bisa menyelesaikan wizard.
+
+    Jalur yang benar: wizard milik bridge sendiri (cykeo_bridge wizard) yang
+    menulis config.json ke %ProgramData% - WAJIB elevated, jadi tray memicu
+    dengan verb "runas" supaya Windows menampilkan UAC.
+    """
     assert TRAY_CS.is_file(), f"{TRAY_CS} tidak ada"
     src = TRAY_CS.read_text(encoding="utf-8", errors="replace")
-    assert "install_cykeo.ps1" in src
-    assert '"staging"' in src, (
-        "TrayAgent.cs tidak punya fallback ke folder staging - kalau "
-        "wizard tidak ada di InstallDir, tidak ada jalur lain"
+
+    # Menu lama harus benar-benar tidak dirender lagi.
+    assert not re.search(
+        r'_menu\.Items\.Add\(\s*"Jalankan wizard konfigurasi"', src
+    ), (
+        "menu 'Jalankan wizard konfigurasi' masih dirender - itu menu yang "
+        "bikin error di PC teknisi"
+    )
+
+    # Menu baru harus ada.
+    assert '"Konfigurasi reader (minta izin admin)"' in src, (
+        "menu konfigurasi baru tidak ada di TrayAgent.cs"
+    )
+
+    # Wizard harus lewat launcher, bukan "-m cykeo_bridge". Interpreter
+    # embeddable punya python312._pth -> isolated mode -> sys.path diabaikan
+    # -> "python -m <module>" selalu gagal dengan "No module named".
+    assert "bridge_launcher.py" in src, (
+        "konfigurasi harus lewat bridge_launcher.py - 'python -m cykeo_bridge' "
+        "selalu gagal di runtime embeddable"
+    )
+
+    # WAJIB elevasi: config.json ditulis ke %ProgramData% yang butuh admin.
+    assert 'Verb = "runas"' in src, (
+        "wizard konfigurasi tidak minta elevasi UAC - tanpa 'runas' wizard "
+        "gagal menyimpan ke %ProgramData%\\CykeoBridge\\config.json"
+    )
+
+    # Batal di dialog UAC bukan error.
+    assert "1223" in src, (
+        "pembatalan UAC (ERROR_CANCELLED 1223) harus ditangani diam-diam, "
+        "bukan ditampilkan sebagai error"
+    )
+
+    # Fungsi konfigurasi tidak boleh memanggil install_cykeo.ps1 lagi.
+    m = re.search(
+        r"private static void RunConfigureWizard\(\)(.*?)\n        \}", src, re.S
+    )
+    assert m, "RunConfigureWizard() tidak ditemukan di TrayAgent.cs"
+    kode = "\n".join(
+        baris for baris in m.group(1).splitlines()
+        if not baris.strip().startswith("//")
+    )
+    assert not re.search(r'"[^"]*install_cykeo\.ps1[^"]*"', kode), (
+        "RunConfigureWizard() masih memanggil install_cykeo.ps1 - itu "
+        "installer, bukan wizard konfigurasi"
     )
