@@ -32,6 +32,11 @@ r*.jpg
 *.log
 parse.txt
 
+# --- backup rollback lokal (jangan pernah di-commit) ---
+*.bak-v1624
+*.bak2
+*.bak
+
 # --- skrip diagnosa infrastruktur sementara (tidak untuk produksi) ---
 tray/iptest.ps1
 tray/nettest.ps1

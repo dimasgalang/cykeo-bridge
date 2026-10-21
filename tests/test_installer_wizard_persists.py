@@ -29,6 +29,8 @@ from pathlib import Path
 REPO = Path("/home/hermes/workspace/cykeo-installer-release")
 PS1 = REPO / "install_cykeo.ps1"
 TRAY_CS = REPO / "tray" / "TrayAgent.cs"
+CONFIGURE_CS = REPO / "tray" / "ConfigureDialog.cs"
+CSPROJ = REPO / "tray" / "CykeoTrayAgent.csproj"
 
 
 def _src() -> str:
@@ -105,9 +107,14 @@ def test_tray_konfigurasi_memakai_wizard_python_elevated():
     bukan wizard konfigurasi. Dipanggil dari tray tanpa elevasi hasilnya
     error dan user tidak pernah bisa menyelesaikan wizard.
 
-    Jalur yang benar: wizard milik bridge sendiri (cykeo_bridge wizard) yang
-    menulis config.json ke %ProgramData% - WAJIB elevated, jadi tray memicu
-    dengan verb "runas" supaya Windows menampilkan UAC.
+    Jalur yang benar (v1.6.23): wizard milik bridge sendiri (cykeo_bridge
+    wizard) yang menulis config.json ke %ProgramData% - WAJIB elevated, jadi
+    tray memicu dengan verb "runas" supaya Windows menampilkan UAC.
+
+    Catatan v1.6.24: wizard Python itu DIGANTIKAN GUI native WinForms
+    (ConfigureForm). Test ini tetap mengunci bagian yang belum berubah:
+    menu lama tidak boleh dirender, menu baru wajib ada, dan pemicu
+    konfigurasi harus minta elevasi UAC.
     """
     assert TRAY_CS.is_file(), f"{TRAY_CS} tidak ada"
     src = TRAY_CS.read_text(encoding="utf-8", errors="replace")
@@ -125,9 +132,11 @@ def test_tray_konfigurasi_memakai_wizard_python_elevated():
         "menu konfigurasi baru tidak ada di TrayAgent.cs"
     )
 
-    # Wizard harus lewat launcher, bukan "-m cykeo_bridge". Interpreter
+    # Jalur runtime harus lewat launcher, bukan "-m cykeo_bridge". Interpreter
     # embeddable punya python312._pth -> isolated mode -> sys.path diabaikan
     # -> "python -m <module>" selalu gagal dengan "No module named".
+    # v1.6.24: jalur ini tidak lagi dipakai untuk wizard (GUI native),
+    # tapi bridge_launcher.py tetap dipakai sebagai fallback runtime bridge.
     assert "bridge_launcher.py" in src, (
         "konfigurasi harus lewat bridge_launcher.py - 'python -m cykeo_bridge' "
         "selalu gagal di runtime embeddable"
@@ -157,4 +166,99 @@ def test_tray_konfigurasi_memakai_wizard_python_elevated():
     assert not re.search(r'"[^"]*install_cykeo\.ps1[^"]*"', kode), (
         "RunConfigureWizard() masih memanggil install_cykeo.ps1 - itu "
         "installer, bukan wizard konfigurasi"
+    )
+
+
+def test_wizard_konfigurasi_guiform_native_v1624():
+    """v1.6.24: wizard konfigurasi jadi GUI NATIVE WinForms.
+
+    Wizard Python (tkinter) digantikan form WinForms supaya PC teknisi
+    tidak butuh Python terpasang untuk membuka konfigurasi. Formnya
+    menyatu di tray agent yang sama, dipanggil lewat mode `--wizard`,
+    dan diproses SEBELUM mutex tray (kalau tidak, tray yang sudah jalan
+    akan menolak dengan "tray sudah berjalan" dan form tidak pernah
+    muncul).
+
+    Yang dikunci test ini:
+    1. File form native ada dan class-nya ConfigureForm.
+    2. Form dikompilasi bersama tray agent (kalau tidak ikut, formnya
+       tidak ada di PC user).
+    3. Mode --wizard diproses sebelum mutex tray.
+    4. Wizard dijalankan elevated (UAC) karena menulis ke %ProgramData%.
+    5. Tidak ada lagi pemanggilan wizard Python untuk form konfigurasi.
+    """
+    assert CONFIGURE_CS.is_file(), f"{CONFIGURE_CS} tidak ada"
+    form = CONFIGURE_CS.read_text(encoding="utf-8", errors="replace")
+    src = TRAY_CS.read_text(encoding="utf-8", errors="replace")
+
+    # 1. Class form native.
+    assert re.search(r"class\s+ConfigureForm\b", form), (
+        "class ConfigureForm tidak ada di ConfigureDialog.cs"
+    )
+    assert re.search(r"new\s+ConfigureForm\s*\(", form), (
+        "ConfigureForm harus benar-benar di-instantiate - kalau tidak, "
+        "formnya tidak pernah dibuka"
+    )
+    assert "Form" in form and "MessageBox" in form, (
+        "ConfigureDialog.cs harus form WinForms sungguhan, bukan stub"
+    )
+
+    # 2. Form ikut dikompilasi oleh csproj tray agent.
+    assert CSPROJ.is_file(), f"{CSPROJ} tidak ada"
+    proj = CSPROJ.read_text(encoding="utf-8", errors="replace")
+    assert "ConfigureDialog.cs" in proj, (
+        "ConfigureDialog.cs tidak ikut dikompilasi - form wizard tidak "
+        "akan ada di PC user"
+    )
+
+    # 3. Mode --wizard ada dan diproses sebelum mutex tray.
+    assert "--wizard" in src, "mode --wizard tidak ada di TrayAgent.cs"
+    pos_flag = src.find('"--wizard"')
+    pos_mutex = src.find("Mutex")
+    assert pos_flag >= 0 and pos_mutex >= 0, (
+        "flag --wizard atau mutex tray tidak ditemukan"
+    )
+    assert pos_flag < pos_mutex, (
+        "mode --wizard harus diproses SEBELUM mutex tray - kalau tidak, "
+        "tray yang sudah jalan menolak dan form wizard tidak muncul"
+    )
+
+    # 4. Wizard elevated lewat UAC.
+    assert 'Verb = "runas"' in src, (
+        "wizard native harus dijalankan elevated (runas) karena menulis "
+        "ke %ProgramData%"
+    )
+
+    # 5. Tidak ada pemanggilan wizard Python untuk form konfigurasi.
+    #    RunConfigureWizard() harus memanggil executable tray itu sendiri
+    #    dengan mode --wizard, BUKAN menjalankan Python/bridge_launcher.
+    m = re.search(
+        r"private static void RunConfigureWizard\(\)(.*?)\n        \}", src, re.S
+    )
+    assert m, "RunConfigureWizard() tidak ditemukan di TrayAgent.cs"
+    kode = m.group(1)
+    kode = "\n".join(
+        b for b in kode.splitlines() if not b.strip().startswith("//")
+    )
+    assert "--wizard" in kode, (
+        "RunConfigureWizard() harus memanggil executable tray sendiri "
+        "dengan mode --wizard"
+    )
+    # Larangan keras: tidak boleh menjalankan Python untuk membuka form.
+    # Pola sengaja longgar (cukup satu penanda), supaya variations kecil
+    # di cara pemanggilan tidak lolos dari gate.
+    for pola, pesan in (
+        (r"cykeo_bridge",
+         "RunConfigureWizard() menjalankan modul Python cykeo_bridge - form "
+         "harus native WinForms, bukan Python"),
+        (r"bridge_launcher",
+         "RunConfigureWizard() memakai bridge_launcher.py - form harus "
+         "native WinForms, bukan Python"),
+        (r"install_cykeo\.ps1",
+         "RunConfigureWizard() memanggil install_cykeo.ps1 - itu installer, "
+         "bukan wizard konfigurasi"),
+    ):
+        assert not re.search(pola, kode), pesan
+    assert "ConfigureForm" in form, (
+        "form native harus ada di ConfigureDialog.cs"
     )
