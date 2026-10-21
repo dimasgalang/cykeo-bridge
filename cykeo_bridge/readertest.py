@@ -263,7 +263,7 @@ def jalankan_uji_dari_file(config_path: Optional[str] = None, *,
             ok=False,
             ringkasan="Config belum ada.",
             error=f"CONFIG_TIDAK_ADA: {path}",
-            saran="Jalankan wizard konfigurasi lebih dulu.",
+            saran="Buka menu Konfigurasi reader (minta izin admin) dulu.",
         )
     config = load_config(path)
     return jalankan_uji(config, durasi=durasi, on_tag=on_tag)
