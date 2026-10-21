@@ -958,6 +958,97 @@ namespace CykeoBridge.Tray
 
         // ------------------------------------------- wizard konfigurasi (tray)
 
+        /// <summary>
+        /// Path exe tray agent yang sedang berjalan.
+        ///
+        /// v1.6.25: source sebelumnya memakai
+        /// Path.Combine(BaseDirectory, "CykeoTrayAgent.exe"). Itu rapuh:
+        ///   - kalau tray dijalankan lewat shortcut/scheduled task, nama
+        ///     file executable bisa berbeda dari nama asembly, sehingga
+        ///     path hasil Combine tidak ada (file not found);
+        ///   - kalau file-nya memang ada tapi BaseDirectory kosong/salah,
+        ///     wizard gagal.
+        ///
+        /// Resolver ini mencoba beberapa sumber, dari yang paling exact:
+        ///   1. Lokasi assembly yang sedang dieksekusi (paling akurat -
+        ///      menunjuk file binary yang benar-benar jalan).
+        ///   2. Process.GetCurrentProcess().MainModule.FileName.
+        ///   3. Application.ExecutablePath.
+        ///   4. BaseDirectory + nama exe.
+        ///   5. Pencarian exe di BaseDirectory dan folder install.
+        /// </summary>
+        private static string ResolveSelfExe()
+        {
+            var seen = new System.Collections.Generic.List<string>();
+
+            Action<string> add = delegate(string p)
+            {
+                if (!string.IsNullOrEmpty(p) && !seen.Contains(p))
+                    seen.Add(p);
+            };
+
+            try
+            {
+                add(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            }
+            catch { }
+            try
+            {
+                add(Process.GetCurrentProcess().MainModule.FileName);
+            }
+            catch { }
+            try
+            {
+                add(Application.ExecutablePath);
+            }
+            catch { }
+
+            string baseDir = null;
+            try { baseDir = AppDomain.CurrentDomain.BaseDirectory; }
+            catch { }
+            if (!string.IsNullOrEmpty(baseDir))
+            {
+                add(Path.Combine(baseDir, "CykeoTrayAgent.exe"));
+                add(Path.Combine(baseDir, AppName + ".exe"));
+            }
+            if (!string.IsNullOrEmpty(_installDir))
+            {
+                add(Path.Combine(_installDir, "CykeoTrayAgent.exe"));
+            }
+
+            foreach (string p in seen)
+            {
+                try
+                {
+                    if (File.Exists(p))
+                        return Path.GetFullPath(p);
+                }
+                catch { }
+            }
+
+            // Terakhir: cari exe pertama yang cocok di folder install /
+            // base directory. Ini menutup kasus file tray diganti nama.
+            string[] roots = { baseDir, _installDir };
+            foreach (string root in roots)
+            {
+                if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+                    continue;
+                try
+                {
+                    string[] hits = Directory.GetFiles(root, "*.exe");
+                    foreach (string hit in hits)
+                    {
+                        string name = Path.GetFileNameWithoutExtension(hit);
+                        if (name.IndexOf("TrayAgent", StringComparison.OrdinalIgnoreCase) >= 0)
+                            return Path.GetFullPath(hit);
+                    }
+                }
+                catch { }
+            }
+
+            return null;
+        }
+
         private static void RunConfigureWizard()
         {
             // v1.6.24: wizard konfigurasi jadi GUI NATIVE (C#/WinForms),
@@ -987,13 +1078,29 @@ namespace CykeoBridge.Tray
             // Exe yang dijalankan adalah file tray agent yang sedang hidup
             // (Path.GetDirectoryName(Application.ExecutablePath)), dengan
             // argumen --wizard. Jadi wizard tidak butuh file terpisah.
-            string selfExe = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory, "CykeoTrayAgent.exe");
-            if (!File.Exists(selfExe))
+            // v1.6.25: BUG PERBAIKAN. Source sebelumnya menulis:
+            //
+            //   new ProcessStartInfo("\"selfExe\" --wizard --config ...")
+            //
+            // Constructor 2-argumen itu menyamakan FileName dengan SELURUH
+            // command line. Dengan UseShellExecute=true, ShellExecute
+            // memperlakukan seluruh string itu sebagai SATU path file, jadi
+            // Windows mencari file bernama
+            //   "C:\...\CykeoTrayAgent.exe" --wizard --config "C:\..."
+            // yang tidak ada -> ERROR_FILE_NOT_FOUND (2), dan dialog
+            // "Gagal menjalankan wizard: The system cannot find the file
+            // specified." muncul. Persis yang dilaporkan teknisi.
+            //
+            // PERBAIKAN: FileName = path exe saja, argumen dipisah lewat
+            // property Arguments. ShellExecute lalu benar-benar menjalankan
+            // exe dengan argumen tersebut.
+            string selfExe = ResolveSelfExe();
+            if (selfExe == null)
             {
                 MessageBox.Show(
                     "File tray agent tidak ditemukan di:" + Environment.NewLine +
-                    "  " + selfExe + Environment.NewLine + Environment.NewLine +
+                    "  " + AppDomain.CurrentDomain.BaseDirectory +
+                    Environment.NewLine + Environment.NewLine +
                     "Jalankan ulang paket installer untuk memulihkan file tray.",
                     AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -1004,15 +1111,23 @@ namespace CykeoBridge.Tray
                 "CykeoBridge", "config.json");
             string pythonExe = FindPython();
 
+            // Argumen dirakit terpisah. Path yang mengandung spasi tetap
+            // aman karena ProcessStartInfo meng-quote sendiri.
+            var wizardArgs = new System.Text.StringBuilder();
+            wizardArgs.Append("--wizard");
+            wizardArgs.Append(" --config \"").Append(configPath).Append("\"");
+            if (!string.IsNullOrEmpty(_installDir))
+                wizardArgs.Append(" --install-dir \"").Append(_installDir).Append("\"");
+            if (!string.IsNullOrEmpty(pythonExe))
+                wizardArgs.Append(" --python \"").Append(pythonExe).Append("\"");
+
             try
             {
-                var psi = new ProcessStartInfo(
-                    "\"" + selfExe + "\" --wizard" +
-                    " --config \"" + configPath + "\"" +
-                    " --install-dir \"" + _installDir + "\"" +
-                    (pythonExe == null ? "" : " --python \"" + pythonExe + "\""))
+                var psi = new ProcessStartInfo(selfExe, wizardArgs.ToString())
                 {
-                    WorkingDirectory = _installDir,
+                    WorkingDirectory = string.IsNullOrEmpty(_installDir)
+                        ? AppDomain.CurrentDomain.BaseDirectory
+                        : _installDir,
                     // "runas" = minta elevasi lewat UAC. WAJIB karena wizard
                     // menulis config.json ke %ProgramData%.
                     Verb = "runas",
@@ -1020,7 +1135,8 @@ namespace CykeoBridge.Tray
                 };
 
                 Process.Start(psi);
-                Log("wizard konfigurasi GUI native dijalankan (elevated): " + selfExe);
+                Log("wizard konfigurasi GUI native dijalankan (elevated): " +
+                    selfExe + " " + wizardArgs);
             }
             catch (System.ComponentModel.Win32Exception ex)
             {

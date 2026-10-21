@@ -51,9 +51,16 @@ if (-not $csc) {
 Write-Step "compiler: $csc"
 
 # ---------------------------------------------------------------- cek source
+# v1.6.24: wizard konfigurasi GUI native tinggal di ConfigureDialog.cs.
+# File ini WAJIB ikut dikompilasi - kalau tidak, form wizard tidak pernah
+# ada di PC user tapi build tetap "sukses" (csc.exe tidak mengeluh file
+# yang tidak Dirujuk). Sumber lain cukup satu file.
 $src = Join-Path $SourceDir 'TrayAgent.cs'
 if (-not (Test-Path $src)) { throw "TrayAgent.cs tidak ditemukan di $SourceDir" }
+$srcGui = Join-Path $SourceDir 'ConfigureDialog.cs'
+if (-not (Test-Path $srcGui)) { throw "ConfigureDialog.cs tidak ditemukan di $SourceDir" }
 Write-Step ("source: " + (Get-Item $src).Length + " byte")
+Write-Step ("source GUI: " + (Get-Item $srcGui).Length + " byte")
 
 # ---------------------------------------------------------------- build
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
@@ -63,7 +70,7 @@ Remove-Item $errFile -ErrorAction SilentlyContinue
 
 Write-Step 'compile...'
 & $csc /nologo /target:winexe /platform:x86 /optimize+ `
-       "/out:$out" $src 2> $errFile
+       "/out:$out" $src $srcGui 2> $errFile
 $code = $LASTEXITCODE
 
 if ($code -ne 0) {

@@ -262,3 +262,101 @@ def test_wizard_konfigurasi_guiform_native_v1624():
     assert "ConfigureForm" in form, (
         "form native harus ada di ConfigureDialog.cs"
     )
+
+
+def test_wizard_exec_argumen_tidak_disatukan_dengan_path_file_v1625():
+    """v1.6.25: exe wizard tidak boleh dipanggil dengan FileName = command line.
+
+    Gejala di PC teknisi (2026-10-21): menu "Konfigurasi reader (minta
+    izin admin)" membuka dialog
+
+        Gagal menjalankan wizard:
+        The system cannot find the file specified.
+
+    PENYEBAB: source v1.6.24 menulis
+
+        new ProcessStartInfo("\\"" + selfExe + "\\" --wizard --config ...")
+
+    Constructor 2-argumen itu menyamakan FileName dengan SELURUH command
+    line. Karena UseShellExecute=true, ShellExecute memperlakukan string
+    itu sebagai SATU path file dan mencari file bernama
+
+        "C:\\...\\CykeoTrayAgent.exe" --wizard --config "C:\\..."
+
+    yang jelas tidak ada -> ERROR_FILE_NOT_FOUND (2).
+
+    Yang dikunci test ini:
+    1. FileName harus path exe saja (tanpa argumen).
+    2. Argumen harus lewat property Arguments / argumen terpisah.
+    3. Path executable harus diresolusi (bukan hard-coded Path.Combine
+       BaseDirectory + nama file) supaya file yang benar-benar jalan
+       dipakai.
+    """
+    src = TRAY_CS.read_text(encoding="utf-8", errors="replace")
+
+    m = re.search(
+        r"private static void RunConfigureWizard\(\)(.*?)\n        \}", src, re.S
+    )
+    assert m, "RunConfigureWizard() tidak ditemukan di TrayAgent.cs"
+    kode = "\n".join(
+        b for b in m.group(1).splitlines() if not b.strip().startswith("//")
+    )
+
+    # 1. Larangan constructor 2-argumen dengan command line gabungan.
+    #    Pola longgar: string yang MEMUAT '--wizard' DAN tanda kutip
+    #    di dalam argumen ProcessStartInfo berarti FileName ikut membawa
+    #    argumen.
+    for pola, pesan in (
+        (r'ProcessStartInfo\(\s*"[^"]*--wizard',
+         "ProcessStartInfo 2-argumen dipakai dengan '--wizard' di dalam "
+         "string - FileName akan berisi seluruh command line dan Windows "
+         "akan mencari file yang tidak ada (ERROR_FILE_NOT_FOUND)"),
+        (r'ProcessStartInfo\(\s*"[^"]*\\"\s*\+',
+         "FileName ProcessStartInfo dibangun dengan menyambung kutip dan "
+         "argumen - itu membuat path file berisi command line"),
+    ):
+        assert not re.search(pola, kode), pesan
+
+    # 2. Argumen harus terpisah dari path file. Dua bentuk yang benar:
+    #    a) new ProcessStartInfo(pathVar, argsVar)   -> 2 argumen
+    #    b) new ProcessStartInfo(pathVar) { .Arguments = ... }
+    #    Yang SALAH: argumen ikut menempel di literal string pertama.
+    m_psi = re.search(r"new\s+ProcessStartInfo\s*\(([^;]*?)\)\s*\{", kode, re.S)
+    assert m_psi, "ProcessStartInfo tidak dipakai di RunConfigureWizard()"
+    argumen_psi = m_psi.group(1)
+    if "," in argumen_psi:
+        # Bentuk (a): argumen pertama harus path exe, TANPA '--wizard'.
+        arg_pertama = argumen_psi.split(",")[0]
+        assert "--wizard" not in arg_pertama, (
+            "argumen pertama ProcessStartInfo harus path file saja - "
+            "'--wizard' di sana membuat FileName berisi command line"
+        )
+    else:
+        # Bentuk (b): argumen wajib lewat property Arguments.
+        assert re.search(r"\.Arguments\s*=", kode), (
+            "argumen wizard harus lewat property Arguments, bukan digabung "
+            "ke dalam FileName"
+        )
+
+    # 3. Path executable harus dari resolver, bukan hard-coded combine.
+    assert re.search(r"ResolveSelfExe\s*\(", kode), (
+        "path executable wizard harus lewat ResolveSelfExe() - hard-coded "
+        "Path.Combine(BaseDirectory, ...) bisa menunjuk file yang tidak ada"
+    )
+    assert not re.search(
+        r'Path\.Combine\(\s*AppDomain\.CurrentDomain\.BaseDirectory\s*,'
+        r'\s*"CykeoTrayAgent\.exe"',
+        kode,
+    ), (
+        "path executable wizard masih hard-coded dari BaseDirectory - "
+        "pakai ResolveSelfExe() supaya file yang benar-benar jalan dipakai"
+    )
+
+    # 4. Resolver itu harus benar-benar ada di file yang sama.
+    assert re.search(r"private static string ResolveSelfExe\s*\(\s*\)", src), (
+        "ResolveSelfExe() harus ada di TrayAgent.cs"
+    )
+    assert "GetExecutingAssembly().Location" in src, (
+        "ResolveSelfExe() harus memakai lokasi assembly yang sedang "
+        "dieksekusi - itu sumber paling akurat untuk path exe"
+    )
