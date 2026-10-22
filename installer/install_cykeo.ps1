@@ -34,6 +34,13 @@ param(
     [string]$ComPort,
     [int]$Baudrate = 115200,
     [string]$Mode = 'cykeo',
+    # Daya tx / gain antena reader Cykeo.
+    # -1 = pakai level TERTINGGI yang didukung reader (dibaca runtime dari
+    #      MsgBaseGetCapabilities MinPower..MaxPower). Ini default yang
+    #      disarankan: RFID lebih mudah terbaca & akurat.
+    #  0 = jangan sentuh setting power reader.
+    # n>0 = level spesifik (helper clamp ke rentang reader).
+    [int]$TxPower = -1,
     [switch]$SkipStartup,
     [switch]$SkipDefender,
     [switch]$SkipBridge,
@@ -329,6 +336,8 @@ elseif ($NonInteractive) {
         baudrate     = $Baudrate
         init_param   = ''
         antenna      = 1
+        # -1 = pakai level tertinggi yang didukung reader (runtime).
+        tx_power     = $TxPower
         enabled      = $true
     }
     $cfgPath = Join-Path $cfgDir 'config.json'

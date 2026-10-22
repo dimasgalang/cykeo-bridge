@@ -167,6 +167,7 @@ class CykeoHelperDevice(DeviceAdapter):
         helper_path: Optional[str] = None,
         sdk_dir: Optional[str] = None,
         connect_timeout: int = 60,
+        tx_power: Optional[int] = None,
         name: str = "cykeo",
     ) -> None:
         self.com_port = com_port
@@ -174,6 +175,10 @@ class CykeoHelperDevice(DeviceAdapter):
         self.helper_path = helper_path
         self.sdk_dir = sdk_dir
         self.connect_timeout = int(connect_timeout or 60)
+        #: Daya tx / gain yang diminta. ``None`` = level tertinggi yang
+        #: didukung reader (helper menentukannya dari capabilities).
+        #: ``0`` = jangan ubah setting power reader.
+        self.tx_power = tx_power
         self.name = name
 
         self._proc: Optional[subprocess.Popen] = None
@@ -305,6 +310,10 @@ class CykeoHelperDevice(DeviceAdapter):
         Ini perintah yang benar-benar membuat reader memindai. ``read_tags()``
         hanya menguras buffer, jadi tanpa perintah ini buffer tidak akan pernah
         terisi dan hasil selalu 0 tag.
+
+        Power/gain juga dikirim di perintah yang sama: helper menerapkan
+        ``MsgBaseSetPower`` SEBELUM memulai inventory, karena reader hanya
+        menerima pesan konfigurasi saat idle.
         """
         if self._proc is None:
             self.start()
@@ -314,10 +323,55 @@ class CykeoHelperDevice(DeviceAdapter):
                 "inventory_mode": 1,
                 "tid_len": 6,
                 "tid_mode": 0,
+                "power": self._power_arg(),
             },
             timeout=15.0,
         )
         logger.info("helper: inventory dimulai (MsgBaseInventoryEpc)")
+
+    def _power_arg(self) -> int:
+        """Nilai ``power`` untuk perintah start.
+
+        - ``None``  -> ``-1``: helper pakai level tertinggi yang didukung
+          reader (dibaca dari MsgBaseGetCapabilities).
+        - ``0``     -> ``0``: jangan ubah setting power reader.
+        - ``n > 0`` -> ``n``: level spesifik (helper clamp ke rentang reader).
+
+        Pakai ``getattr`` dengan default ``None`` supaya instance yang dibuat
+        lewat ``__new__`` (tanpa ``__init__``) — dipakai beberapa test —
+        tetap aman dan tidak melempar AttributeError.
+        """
+        tx_power = getattr(self, "tx_power", None)
+        if tx_power is None:
+            return -1
+        try:
+            return int(tx_power)
+        except (TypeError, ValueError):
+            return -1
+
+    def set_power(self, power: Optional[int] = None) -> Dict[str, Any]:
+        """Terapkan gain antena di luar siklus inventory.
+
+        Reader harus idle saat pesan konfigurasi dikirim, jadi panggil ini
+        sebelum ``begin_inventory()`` bila perlu set gain eksplisit.
+        """
+        if self._proc is None:
+            self.start()
+        payload: Dict[str, Any] = {"cmd": "set_power"}
+        if power is not None:
+            payload["power"] = int(power)
+        reply = self._request(payload, timeout=15.0)
+        logger.info(
+            "helper: gain diterapkan power=%s (rentang %s-%s)",
+            reply.get("power"), reply.get("minPower"), reply.get("maxPower"),
+        )
+        return reply
+
+    def get_power(self) -> Dict[str, Any]:
+        """Baca daya tx yang terpasang di reader."""
+        if self._proc is None:
+            self.start()
+        return self._request({"cmd": "get_power"}, timeout=15.0)
 
     def end_inventory(self) -> None:
         """Kirim ``MsgBaseStop`` (non-blocking, read-only)."""
@@ -345,6 +399,7 @@ class CykeoHelperDevice(DeviceAdapter):
                 "inventory_mode": 1,
                 "tid_len": 6,
                 "tid_mode": 0,
+                "power": self._power_arg(),
             },
             timeout=15.0,
         )

@@ -94,6 +94,7 @@ def build_device(config: Config, *, fixture: Optional[str] = None) -> DeviceAdap
                 helper_path=(config.helper_path or None),
                 sdk_dir=(config.sdk_dir or None),
                 connect_timeout=int(config.connect_timeout),
+                tx_power=(config.tx_power if config.tx_power is not None else None),
                 name=config.reader_code or "cykeo",
             )
             device.start()

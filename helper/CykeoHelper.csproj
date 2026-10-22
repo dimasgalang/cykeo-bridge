@@ -47,6 +47,17 @@
     <Reference Include="System.IO.Ports" />
   </ItemGroup>
 
+  <!-- Folder `reflect/` adalah proyek terpisah (CykeoReflect.csproj) untuk
+       prober kontrak SDK. SDK-style glob default ikut mengambil file .cs-nya,
+       sehingga AssemblyInfo dari obj/reflect ikut ter-compile dan memicu
+       error CS0579 (Duplicate attribute). Exclude supaya build helper tetap
+       bersih tanpa harus menghapus folder hasil riset. -->
+  <ItemGroup>
+    <Compile Remove="reflect/**" />
+    <None Remove="reflect/**" />
+    <EmbeddedResource Remove="reflect/**" />
+  </ItemGroup>
+
   <ItemGroup>
     <Reference Include="GReaderApi">
       <HintPath>$(SdkDir)GReaderApi.dll</HintPath>

@@ -39,6 +39,9 @@ internal static class Program
     private static bool _connected;
     private static bool _reading;
     private static int _antennaCount = 1;
+    private static int _minPower = 0;
+    private static int _maxPower = 0;
+    private static int _txPower = 0;
     private static StreamWriter _out;
     private static readonly object WriteLock = new();
     private static int _seq;
@@ -133,6 +136,14 @@ internal static class Program
                 HandleConnect(id, req);
                 break;
 
+            case "set_power":
+                HandleSetPower(id, req);
+                break;
+
+            case "get_power":
+                HandleGetPower(id);
+                break;
+
             case "start":
                 HandleStart(id, req);
                 break;
@@ -153,7 +164,10 @@ internal static class Program
                 {
                     ["connected"] = _connected,
                     ["reading"] = _reading,
-                    ["antennaCount"] = _antennaCount
+                    ["antennaCount"] = _antennaCount,
+                    ["minPower"] = _minPower,
+                    ["maxPower"] = _maxPower,
+                    ["txPower"] = _txPower
                 });
                 break;
 
@@ -250,12 +264,15 @@ internal static class Program
 
             _connected = true;
             _antennaCount = ProbeAntennaCount();
+            ProbeCapabilities();
 
             ReplyOk(id, new JObject
             {
                 ["connected"] = true,
                 ["connectionString"] = connString,
-                ["antennaCount"] = _antennaCount
+                ["antennaCount"] = _antennaCount,
+                ["minPower"] = _minPower,
+                ["maxPower"] = _maxPower
             });
         }
         catch (Exception ex)
@@ -263,6 +280,137 @@ internal static class Program
             _connected = false;
             _client = null;
             ReplyError(id, "connect_exception", $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    // ---- power / gain -----------------------------------------------------
+
+    /// <summary>
+    /// Terapkan daya tx (gain) ke semua antena reader.
+    ///
+    /// Kontrak diambil dari decompile production
+    /// ``FlexiAudit.Infrastructure.RfidReader.CykeoReader.SetReaderPower``:
+    ///
+    ///     var msg = new MsgBaseSetPower();
+    ///     var dic = new Dictionary&lt;byte, byte&gt;();
+    ///     for (int i = 0; i &lt; AntennaCount; i++)
+    ///         dic.Add((byte)(i + 1), (byte)powerLevel);
+    ///     msg.DicPower = dic;
+    ///     _clientConn.SendSynMsg(msg);
+    ///
+    /// PENTING:
+    /// - Key dictionary = nomor antena 1-based (1..AntennaCount), BUKAN 0-based.
+    /// - Nilai = level daya yang didukung reader. Rentang sah dibaca dari
+    ///   ``MsgBaseGetCapabilities`` (MinPower..MaxPower) — angkanya dinamis
+    ///   per unit, jadi selalu probe capabilities dulu sebelum applying.
+    /// - Nilai di luar rentang reader DITOLAK helper (tidak dikirim), supaya
+    ///   konfigurasi installer yang salah tidak merusak setting unit.
+    /// </summary>
+    private static void HandleSetPower(int id, JObject req)
+    {
+        if (!_connected || _client is null)
+        {
+            ReplyError(id, "not_connected", "helper belum terhubung; jalankan connect dulu");
+            return;
+        }
+
+        // Probe capabilities lebih dulu: rentang power & jumlah antena
+        // hanya diketahui dari reader.
+        ProbeCapabilities();
+
+        if (_maxPower < _minPower)
+        {
+            ReplyError(id, "capabilities_unavailable",
+                "rentang power reader tidak diketahui (MinPower/MaxPower tidak terbaca)");
+            return;
+        }
+
+        // Default: power tertinggi yang didukung reader.
+        int requested = ReadInt(req, "power", _maxPower);
+        int level = Math.Max(_minPower, Math.Min(_maxPower, requested));
+
+        bool clamped = level != requested;
+        if (clamped)
+        {
+            Emit(new JObject
+            {
+                ["type"] = "log",
+                ["level"] = "warn",
+                ["message"] = string.Format(
+                    "power {0} di luar rentang reader {1}-{2}; dipakai {3}",
+                    requested, _minPower, _maxPower, level)
+            });
+        }
+
+        try
+        {
+            var dic = new Dictionary<byte, byte>();
+            for (int i = 0; i < _antennaCount; i++)
+            {
+                dic.Add((byte)(i + 1), (byte)level);
+            }
+
+            var msg = new MsgBaseSetPower
+            {
+                DicPower = dic
+            };
+
+            _client.SendSynMsg(msg);
+            _txPower = level;
+
+            ReplyOk(id, new JObject
+            {
+                ["applied"] = true,
+                ["power"] = level,
+                ["requested"] = requested,
+                ["clamped"] = clamped,
+                ["minPower"] = _minPower,
+                ["maxPower"] = _maxPower,
+                ["antennaCount"] = _antennaCount
+            });
+        }
+        catch (Exception ex)
+        {
+            ReplyError(id, "set_power_exception", $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Baca daya tx yang terpasang di reader (MsgBaseGetPower).
+    /// </summary>
+    private static void HandleGetPower(int id)
+    {
+        if (!_connected || _client is null)
+        {
+            ReplyError(id, "not_connected", "helper belum terhubung; jalankan connect dulu");
+            return;
+        }
+
+        try
+        {
+            var msg = new MsgBaseGetPower();
+            _client.SendSynMsg(msg);
+
+            var levels = new JObject();
+            if (msg.DicPower != null)
+            {
+                foreach (var kv in msg.DicPower)
+                {
+                    levels[kv.Key.ToString()] = kv.Value;
+                }
+            }
+
+            ReplyOk(id, new JObject
+            {
+                ["dicPower"] = levels,
+                ["minPower"] = _minPower,
+                ["maxPower"] = _maxPower,
+                ["txPower"] = _txPower
+            });
+        }
+        catch (Exception ex)
+        {
+            ReplyError(id, "get_power_exception", $"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -289,6 +437,9 @@ internal static class Program
         int mode = ReadInt(req, "inventory_mode", 1);
         int tidLen = ReadInt(req, "tid_len", 6);
         int tidMode = ReadInt(req, "tid_mode", 0);
+        // Power/gain: -1 = pakai default (tertinggi yang didukung reader),
+        // 0 = jangan ubah sama sekali.
+        int requestedPower = ReadInt(req, "power", -1);
 
         try
         {
@@ -297,6 +448,42 @@ internal static class Program
             if (detected > 0)
             {
                 _antennaCount = detected;
+            }
+
+            // Terapkan gain SEBELUM inventory. Reader hanya menerima pesan
+            // konfigurasi saat idle, jadi set power wajib sebelum inventory
+            // dimulai (lihat Tips di manual resmi §6.2.2).
+            int appliedPower = 0;
+            bool powerApplied = false;
+            if (requestedPower != 0)
+            {
+                ProbeCapabilities();
+                if (_maxPower >= _minPower)
+                {
+                    int target = requestedPower < 0
+                        ? _maxPower
+                        : Math.Max(_minPower, Math.Min(_maxPower, requestedPower));
+
+                    var dic = new Dictionary<byte, byte>();
+                    for (int i = 0; i < _antennaCount; i++)
+                    {
+                        dic.Add((byte)(i + 1), (byte)target);
+                    }
+
+                    _client.SendSynMsg(new MsgBaseSetPower { DicPower = dic });
+                    _txPower = target;
+                    appliedPower = target;
+                    powerApplied = true;
+                }
+                else
+                {
+                    Emit(new JObject
+                    {
+                        ["type"] = "log",
+                        ["level"] = "warn",
+                        ["message"] = "rentang power reader tidak terbaca; gain tidak diubah"
+                    });
+                }
             }
 
             uint antennaEnable = GenerateAntenna(_antennaCount);
@@ -320,7 +507,11 @@ internal static class Program
                 ["reading"] = true,
                 ["antennaCount"] = _antennaCount,
                 ["antennaEnable"] = antennaEnable,
-                ["inventoryMode"] = mode
+                ["inventoryMode"] = mode,
+                ["powerApplied"] = powerApplied,
+                ["txPower"] = appliedPower,
+                ["minPower"] = _minPower,
+                ["maxPower"] = _maxPower
             });
         }
         catch (Exception ex)
@@ -471,6 +662,49 @@ internal static class Program
                 ["message"] = "get capabilities gagal: " + ex.Message
             });
             return _antennaCount;
+        }
+    }
+
+    /// <summary>
+    /// Baca rentang daya tx yang didukung reader (MinPower..MaxPower)
+    /// sekaligus jumlah antena, dari MsgBaseGetCapabilities.
+    ///
+    /// Rentang power reader TIDAK konstan antar unit — jadi nilainya harus
+    /// dibaca dari device, bukan diasumsikan di installer.
+    /// </summary>
+    private static void ProbeCapabilities()
+    {
+        if (_client is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var caps = new MsgBaseGetCapabilities();
+            _client.SendSynMsg(caps);
+
+            if (caps.AntennaCount > 0)
+            {
+                _antennaCount = caps.AntennaCount;
+            }
+
+            // MaxPower < MinPower berarti reader tidak melaporkan capabilities
+            // yang valid (mis. sedang inventory). Jangan timpa nilai baik.
+            if (caps.MaxPower >= caps.MinPower)
+            {
+                _minPower = caps.MinPower;
+                _maxPower = caps.MaxPower;
+            }
+        }
+        catch (Exception ex)
+        {
+            Emit(new JObject
+            {
+                ["type"] = "log",
+                ["level"] = "warn",
+                ["message"] = "probe capabilities gagal: " + ex.Message
+            });
         }
     }
 

@@ -174,6 +174,7 @@ namespace CykeoBridge.Tray
         private readonly TextBox _comPort = new TextBox();
         private readonly TextBox _baudrate = new TextBox();
         private readonly TextBox _initParam = new TextBox();
+        private readonly TextBox _txPower = new TextBox();
         private readonly ComboBox _mode = new ComboBox();
         private readonly CheckBox _enabled = new CheckBox();
         private readonly Label _status = new Label();
@@ -200,7 +201,9 @@ namespace CykeoBridge.Tray
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(520, 430);
+            // 7 baris field (server, reader code, API key, COM, baud,
+            // initParam, gain antena) + mode + checkbox + status + tombol.
+            ClientSize = new Size(520, 460);
             AutoScaleMode = AutoScaleMode.Font;
             Font = new Font("Segoe UI", 9F);
 
@@ -215,6 +218,9 @@ namespace CykeoBridge.Tray
             AddRow("Port COM", _comPort, ref y, labelW, fieldW, rowH, false);
             AddRow("Baudrate", _baudrate, ref y, labelW, fieldW, rowH, false);
             AddRow("initParam Cykeo (hex)", _initParam, ref y, labelW, fieldW, rowH, true);
+            // Gain / daya tx antena reader. -1 = level tertinggi yang didukung
+            // reader (dibaca runtime dari reader, jadi per-unit).
+            AddRow("Gain antena (-1 = tertinggi reader)", _txPower, ref y, labelW, fieldW, rowH, false);
 
             // Mode reader
             var modeLabel = new Label
@@ -323,6 +329,7 @@ namespace CykeoBridge.Tray
             _comPort.Text = Get(data, "com_port", ConfigureDialog.DefaultComPort);
             _baudrate.Text = Get(data, "baudrate", ConfigureDialog.DefaultBaudrate.ToString(CultureInfo.InvariantCulture));
             _initParam.Text = Get(data, "init_param", ConfigureDialog.DefaultInitParam);
+            _txPower.Text = Get(data, "tx_power", "-1");
 
             string mode = Get(data, "mode", "cykeo");
             if (_mode.Items.Contains(mode))
@@ -398,9 +405,26 @@ namespace CykeoBridge.Tray
             if (string.IsNullOrEmpty(mode))
                 mode = "cykeo";
 
+            // Gain antena. -1 = level tertinggi yang didukung reader (runtime),
+            // 0 = jangan sentuh setting power reader, n>0 = level spesifik.
+            int txPower;
+            if (!int.TryParse(_txPower.Text.Trim(), out txPower))
+            {
+                MessageBox.Show(
+                    "Gain antena harus angka.\n\n" +
+                    "-1 = pakai level tertinggi yang didukung reader (disarankan)\n" +
+                    "0  = jangan ubah setting power reader\n" +
+                    "n>0= level spesifik (helper clamp ke rentang reader)",
+                    "Konfigurasi belum valid",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (txPower < -1)
+                txPower = -1;
+
             string json = BuildConfigJson(
                 server, _readerCode.Text.Trim(), apiKey,
-                _comPort.Text.Trim(), baud, mode, initParam, _enabled.Checked);
+                _comPort.Text.Trim(), baud, mode, initParam, txPower, _enabled.Checked);
 
             try
             {
@@ -460,7 +484,7 @@ namespace CykeoBridge.Tray
         internal static string BuildConfigJson(
             string serverUrl, string readerCode, string apiKey,
             string comPort, int baudrate, string mode, string initParam,
-            bool enabled)
+            int txPower, bool enabled)
         {
             var sb = new StringBuilder();
             sb.Append("{\n");
@@ -475,6 +499,9 @@ namespace CykeoBridge.Tray
             sb.Append("  \"log_path\": \"\",\n");
             sb.Append("  \"queue_path\": \"\",\n");
             sb.Append("  \"init_param\": ").Append(Quote(initParam)).Append(",\n");
+            // Gain antena: -1 = level tertinggi yang didukung reader (runtime),
+            // 0 = jangan ubah, n>0 = level spesifik.
+            sb.Append("  \"tx_power\": ").Append(txPower.ToString(CultureInfo.InvariantCulture)).Append(",\n");
             sb.Append("  \"antenna\": null,\n");
             sb.Append("  \"helper_path\": \"\",\n");
             sb.Append("  \"sdk_dir\": \"\",\n");

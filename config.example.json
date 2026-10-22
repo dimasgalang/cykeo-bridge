@@ -24,6 +24,9 @@
   "_sdk_dir": "Folder SDK vendor berisi GReaderApi.dll. Kosong = ikut folder helper.",
   "sdk_dir": "",
 
+  "_tx_power": "Gain / daya tx antena reader. -1 = pakai level TERTINGGI yang didukung reader (dibaca runtime dari MsgBaseGetCapabilities MinPower..MaxPower, jadi angkanya per-unit dan tidak perlu ditebak). 0 = jangan sentuh setting power reader. n>0 = level spesifik (helper clamp ke rentang reader).",
+  "tx_power": -1,
+
   "batch_size": 50,
   "flush_interval": 1.0,
   "poll_interval": 0.25,

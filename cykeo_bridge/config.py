@@ -63,6 +63,7 @@ ENV_MODE = ENV_PREFIX + "MODE"
 ENV_INIT_PARAM = ENV_PREFIX + "INIT_PARAM"
 ENV_QUEUE_PATH = ENV_PREFIX + "QUEUE_PATH"
 ENV_LOG_PATH = ENV_PREFIX + "LOG_PATH"
+ENV_TX_POWER = ENV_PREFIX + "TX_POWER"
 
 REDACTED = "***REDACTED***"
 
@@ -122,8 +123,21 @@ class Config:
     #: Parameter handshake protokol Cykeo (hex). BUKAN license key — nilai
     #: default-nya konstanta resmi SDK, lihat FASE4-FINDINGS.md §3.
     init_param: str = INIT_PARAM_DEFAULT
-    # Opsional — tidak ada di kontrak payload, hanya untuk adaptasi device.
+    #: Opsional — tidak ada di kontrak payload, hanya untuk adaptasi device.
     antenna: Optional[int] = None
+    #: Daya tx / gain antena reader Cykeo (level, bukan dBm absolut).
+    #:
+    #: - ``None`` (default) = pakai level TERTINGGI yang didukung reader.
+    #:   Nilainya dibaca runtime dari reader via
+    #:   ``MsgBaseGetCapabilities`` (MinPower..MaxPower), jadi installer
+    #:   tidak perlu menebak angka tetap per unit.
+    #: - ``0`` = jangan sentuh setting power reader sama sekali.
+    #: - angka > 0 = level spesifik; helper akan clamp ke rentang reader
+    #:   dan memberi tahu kalau nilainya tidak berlaku.
+    #:
+    #: Kontrak: ``MsgBaseSetPower.DicPower`` =
+    #: ``Dictionary<byte, byte>`` dengan key = nomor antena 1-based.
+    tx_power: Optional[int] = None
     #: Path eksplisit `cykeo-helper.exe`. Kosong = autodetect.
     helper_path: str = ""
     #: Folder SDK Cykeo (berisi GReaderApi.dll). Kosong = folder helper.
@@ -209,6 +223,13 @@ class Config:
         if self.mode == MODE_CYKEO:
             if not self.com_port:
                 errors.append("com_port kosong")
+            # tx_power:
+            #   -1 = pakai level tertinggi yang didukung reader (runtime)
+            #    0 = jangan ubah setting power reader
+            #   n>0 = level spesifik (helper clamp ke rentang reader)
+            if self.tx_power is not None and self.tx_power < -1:
+                errors.append("tx_power minimal -1 (-1 = pakai level tertinggi reader, "
+                              "0 = jangan ubah, n>0 = level spesifik)")
             # CATATAN: Cykeo TIDAK memakai license key per-device (konfirmasi
             # teknisi SML + nilai contoh identik di kedua dokumen resmi).
             # `init_param` hanya perlu hex; default-nya konstanta resmi SDK.
@@ -273,7 +294,7 @@ class Config:
                 kwargs["baudrate"] = int(kwargs["baudrate"])
             except (TypeError, ValueError):
                 pass
-        for int_key in ("batch_size", "max_retries", "antenna"):
+        for int_key in ("batch_size", "max_retries", "antenna", "tx_power"):
             if int_key in kwargs and kwargs[int_key] is not None:
                 try:
                     kwargs[int_key] = int(kwargs[int_key])
@@ -372,6 +393,7 @@ def _apply_env_overrides(cfg: Config) -> None:
         ENV_INIT_PARAM: ("init_param", str),
         ENV_QUEUE_PATH: ("queue_path", str),
         ENV_LOG_PATH: ("log_path", str),
+        ENV_TX_POWER: ("tx_power", int),
     }
     for env_name, (attr, caster) in mapping.items():
         value = os.environ.get(env_name)

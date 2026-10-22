@@ -141,6 +141,7 @@ def collect_cli(config_path: Optional[Path] = None, *,
     com_port = existing.com_port or DEFAULT_COM_PORT
     baudrate = int(existing.baudrate or DEFAULT_BAUDRATE)
     init_param = existing.init_param or INIT_PARAM_DEFAULT
+    tx_power = existing.tx_power
     if mode == MODE_CYKEO:
         com_port = _ask("Port COM", com_port, reader=reader)
         baudrate = _ask_int("Baudrate", baudrate, reader=reader)
@@ -156,8 +157,19 @@ def collect_cli(config_path: Optional[Path] = None, *,
         if init_param and not INIT_PARAM_RE.match(init_param):
             printer("  ! initParam bukan 32 hex — nilai handshake protokol, bukan license key.")
             printer("    Biarkan kosong/default kalau tidak yakin.")
+        # Gain / daya tx antena. -1 = level tertinggi yang didukung reader
+        # (dibaca runtime dari reader, jadi angkanya tidak perlu ditebak).
+        tx_power = _ask_int(
+            "Gain antena (level tx; -1 = tertinggi yang didukung reader, "
+            "0 = jangan ubah)",
+            -1 if tx_power is None else tx_power,
+            reader=reader,
+        )
+        if tx_power is not None and tx_power < 0:
+            tx_power = -1
     else:
         printer("  (mode ini tidak memakai COM/helper)")
+        tx_power = None
 
     batch_size = _ask_int("Ukuran batch", existing.batch_size or 50, reader=reader)
     flush_interval = str(existing.flush_interval or 1.0)
@@ -184,6 +196,7 @@ def collect_cli(config_path: Optional[Path] = None, *,
         init_param=init_param,
         helper_path=helper_path,
         sdk_dir=sdk_dir,
+        tx_power=tx_power,
         batch_size=batch_size,
         flush_interval=flush_interval,
         enabled=enabled,
@@ -232,18 +245,22 @@ def _run_gui(config_path: Optional[Path]) -> Optional[Config]:  # pragma: no cov
     add_row(4, "Baudrate", "baudrate", str(existing.baudrate or DEFAULT_BAUDRATE))
     add_row(5, "initParam Cykeo (hex)", "init_param",
             existing.init_param or INIT_PARAM_DEFAULT, secret=True)
+    # Gain antena: -1 = level tertinggi yang didukung reader (runtime),
+    # 0 = jangan ubah setting power reader.
+    add_row(6, "Gain antena (-1 = tertinggi reader)", "tx_power",
+            "-1" if existing.tx_power is None else str(existing.tx_power))
 
     mode_var = tk.StringVar(value=existing.mode or MODE_CYKEO)
-    ttk.Label(frame, text="Mode reader").grid(row=6, column=0, sticky="w", pady=3)
+    ttk.Label(frame, text="Mode reader").grid(row=7, column=0, sticky="w", pady=3)
     ttk.Combobox(frame, textvariable=mode_var, values=list(VALID_MODES), state="readonly",
-                 width=39).grid(row=6, column=1, pady=3)
+                 width=39).grid(row=7, column=1, pady=3)
 
     enable_var = tk.BooleanVar(value=bool(existing.enabled))
     ttk.Checkbutton(frame, text="Aktifkan autostart saat login Windows",
-                    variable=enable_var).grid(row=7, column=0, columnspan=2, sticky="w", pady=6)
+                    variable=enable_var).grid(row=8, column=0, columnspan=2, sticky="w", pady=6)
 
     status = ttk.Label(frame, text="", foreground="#555")
-    status.grid(row=8, column=0, columnspan=2, sticky="w")
+    status.grid(row=9, column=0, columnspan=2, sticky="w")
 
     from .devices.factory import sdk_status
     sdk = sdk_status()
@@ -255,6 +272,15 @@ def _run_gui(config_path: Optional[Path]) -> Optional[Config]:  # pragma: no cov
         except ValueError:
             messagebox.showerror("Input salah", "Baudrate harus angka.")
             return
+        try:
+            # -1 = pakai level tertinggi yang didukung reader (runtime).
+            tx_power = int((fields["tx_power"].get() or "-1").strip())
+        except ValueError:
+            messagebox.showerror("Input salah", "Gain antena harus angka "
+                                           "(-1 = tertinggi yang didukung reader).")
+            return
+        if tx_power < 0:
+            tx_power = -1
         server = fields["server_url"].get().strip()
         if not server.startswith(("http://", "https://")):
             server = f"http://{server}"
@@ -266,6 +292,7 @@ def _run_gui(config_path: Optional[Path]) -> Optional[Config]:  # pragma: no cov
             baudrate=baud,
             mode=mode_var.get(),
             init_param=(fields["init_param"].get().strip() or INIT_PARAM_DEFAULT),
+            tx_power=tx_power,
             enabled=bool(enable_var.get()),
         )
         errors = cfg.validate(strict=True)
